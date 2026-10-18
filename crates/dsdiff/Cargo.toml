@@ -1,0 +1,17 @@
+[package]
+name = "dsd-workbench-dsdiff"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Read the header of DSDIFF (.dff) files: format and audio location"
+license = "MIT"
+repository = "https://github.com/malkhuzanie/dsd-workbench"
+keywords = ["dsd", "dsdiff", "dff", "audio"]
+categories = ["multimedia::audio", "parser-implementations"]
+
+[lib]
+name = "dsdiff"
+
+[dependencies]
+thiserror = "2"
+

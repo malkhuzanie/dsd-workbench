@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How it works · DSD Workbench</title>
+  <meta name="description" content="Read, cut, write, verify: how DSD Workbench splits a DSD side into tracks without decoding a single sample, and proves the copy is exact.">
+  <meta name="theme-color" content="#181715">
+  <link rel="icon" href="assets/img/mark.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/fonts/CormorantGaramond-normal-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="assets/img/mark.svg" alt="" width="30" height="30">DSD Workbench</a>
+      <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <nav aria-label="Main">
+        <a href="how-it-works.html" aria-current="page">How it works</a>
+        <a href="features.html">Features</a>
+        <a href="https://github.com/malkhuzanie/dsd-workbench/tree/main/docs">Docs</a>
+        <a class="btn primary small" href="https://github.com/malkhuzanie/dsd-workbench">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <canvas class="bits" data-bits aria-hidden="true"></canvas>
+      <div class="wrap">
+        <p class="eyebrow">Product · How it works</p>
+        <h1>See what happens <em>inside</em>, step by step.</h1>
+        <p>Four short chapters on what the workbench does between "Split" and "identical": drawn from the program's own rules. Scroll to move through them.</p>
+      </div>
+    </section>
+
+    <section class="pipeline" id="pipeline">
+      <div class="stage"><canvas aria-label="3D animation of a DSD stream being read, cut, written and verified" role="img"></canvas></div>
+      <div class="chapters">
+        <article class="chapter" id="read">
+          <div class="wrap"><div class="box">
+            <div class="kicker"><b>1</b>Read</div>
+            <h2>One long stream, <em>untouched</em>.</h2>
+            <p>A DSD side is a header, a stream of 1-bit samples and an ID3 tag. The workbench reads the header and the tag, parses your CUE sheet, and never opens the source for writing.</p>
+            <ul>
+              <li>DSF and uncompressed DSDIFF, any channel count, any DSD rate</li>
+              <li>CUE text in UTF-8, UTF-16, Shift-JIS, Windows-1252 and more</li>
+              <li>Missing or misnamed files are relinked, never guessed</li>
+            </ul>
+          </div></div>
+        </article>
+        <article class="chapter" id="cut">
+          <div class="wrap"><div class="box">
+            <div class="kicker"><b>2</b>Cut</div>
+            <h2>Cuts land on <em>the exact sample</em>.</h2>
+            <p>Each track starts and ends on the sample the plan names, and neighbouring tracks tile with no gap and no overlap, even when a cut falls in the middle of a byte.</p>
+            <ul>
+              <li>Cut points from the CUE sheet, by hand, or from silence detection</li>
+              <li>A cut that lands in loud music is flagged before you split</li>
+              <li>Nothing is written yet: this is only the plan</li>
+            </ul>
+          </div></div>
+        </article>
+        <article class="chapter" id="write">
+          <div class="wrap"><div class="box">
+            <div class="kicker"><b>3</b>Write</div>
+            <h2>Each track becomes <em>its own file</em>.</h2>
+            <p>Every track gets a fresh DSF header and its own ID3 tag around the copied audio. It is written to a temporary file and renamed into place only when complete, so a cancel or a crash never leaves half a track.</p>
+            <ul>
+              <li>DSDIFF's bit order is reversed so output is always standard DSF</li>
+              <li>Tags and cover art are written per track</li>
+              <li>Existing files are never replaced unless you allow it</li>
+            </ul>
+          </div></div>
+        </article>
+        <article class="chapter" id="verify">
+          <div class="wrap"><div class="box">
+            <div class="kicker"><b>4</b>Verify</div>
+            <h2>Then it checks <em>its own work</em>.</h2>
+            <p>Each output is read back and compared with the source, sample by sample. Differences are mapped; a file that is right but shifted is detected; headers, tags and cover art are checked too. Scripts get a real exit code.</p>
+            <ul>
+              <li>Identical / differs / missing, per track</li>
+              <li>Integrity map of where any difference is</li>
+              <li><code>--verify</code> and <code>--verify-only</code> on the command line</li>
+            </ul>
+          </div></div>
+        </article>
+      </div>
+    </section>
+    <nav class="progress" aria-label="Chapters"><a href="#read" aria-label="Read"></a><a href="#cut" aria-label="Cut"></a><a href="#write" aria-label="Write"></a><a href="#verify" aria-label="Verify"></a></nav>
+
+    <section class="pad dark" id="fool">
+      <div class="wrap">
+        <div class="verify">
+          <div class="reveal">
+            <div class="kicker"><b>·</b>Try to fool it</div>
+            <h2>One flipped bit <em>is enough</em>.</h2>
+            <p>Verification compares every bit of every channel. Flip a single bit in the copy and watch the comparison find it, and tell you where.</p>
+            <p>This sketch uses a small synthetic stream; the real thing does the same over gigabytes, and shows the result as an integrity map per channel.</p>
+          </div>
+          <div class="bitbox reveal d1" id="verify-demo"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pad">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="kicker"><b>·</b>Under the hood</div>
+          <h2>Why it can be <em>this exact</em>.</h2>
+        </div>
+        <div class="compare">
+          <article class="card reveal"><h3>No decoding means no loss</h3><p>DSD is already a 1-bit stream. Converting to PCM and back changes it. Copying the right bits changes nothing: the output audio is the source audio, bit for bit.</p></article>
+          <article class="card reveal d1"><h3>Cuts are in samples, not bytes</h3><p>A cut can fall inside a byte. The writer shifts the bits so each track starts on exactly the sample you chose, and pads the final block the way DSF requires.</p></article>
+          <article class="card reveal"><h3>Every write is atomic</h3><p>Audio goes to <code>name.dsf.part</code> and is renamed on success. A failed or cancelled track leaves no partial file behind.</p></article>
+          <article class="card reveal d1"><h3>Tested against an oracle</h3><p>The test suite splits synthetic DSF and DFF files with awkward cut points and checks every output bit against a separate reference implementation, and fuzzes the parsers.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <canvas class="bits" data-bits aria-hidden="true"></canvas>
+      <div class="wrap">
+        <h2>Convinced? <em>Cut something.</em></h2>
+        <p>It builds with one command. Binaries for Windows, macOS and Linux come with the first release.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/malkhuzanie/dsd-workbench">Get the source</a>
+          <a class="btn ghost" href="features.html">See every feature</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>
+        <a class="brand" href="./"><img src="assets/img/mark.svg" alt="" width="26" height="26">DSD Workbench</a>
+        <p>Cut, tag and verify DSD albums.<br>Open source under the MIT license.</p>
+      </div>
+      <div><h4>Explore</h4><a href="how-it-works.html">How it works</a><a href="features.html">Features</a></div>
+      <div><h4>Project</h4><a href="https://github.com/malkhuzanie/dsd-workbench">GitHub</a><a href="https://github.com/malkhuzanie/dsd-workbench/tree/main/docs">Documentation</a><a href="https://github.com/malkhuzanie/dsd-workbench/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/malkhuzanie/dsd-workbench/issues">Report an issue</a></div>
+      <p class="small">DSD and SACD are trademarks of their respective owners; this project is not affiliated with them. This site loads no third-party scripts, fonts or trackers.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

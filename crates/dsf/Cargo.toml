@@ -1,0 +1,19 @@
+[package]
+name = "dsd-workbench-dsf"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Read and write DSF (DSD Stream File) headers and ID3v2 metadata"
+license = "MIT"
+repository = "https://github.com/malkhuzanie/dsd-workbench"
+keywords = ["dsd", "dsf", "id3", "audio", "metadata"]
+categories = ["multimedia::audio", "parser-implementations"]
+
+[lib]
+# The package name is prefixed because `dsf` is taken on crates.io; code still says `dsf::`.
+name = "dsf"
+
+[dependencies]
+id3 = "1"
+thiserror = "2"
+

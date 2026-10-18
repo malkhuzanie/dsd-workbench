@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Features · DSD Workbench</title>
+  <meta name="description" content="Everything DSD Workbench does: bit-perfect splitting, built-in verification, CUE handling, tagging, waveform editing, optional MusicBrainz and Discogs lookup, and more.">
+  <meta name="theme-color" content="#181715">
+  <link rel="icon" href="assets/img/mark.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/fonts/CormorantGaramond-normal-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="assets/img/mark.svg" alt="" width="30" height="30">DSD Workbench</a>
+      <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <nav aria-label="Main">
+        <a href="how-it-works.html">How it works</a>
+        <a href="features.html" aria-current="page">Features</a>
+        <a href="https://github.com/malkhuzanie/dsd-workbench/tree/main/docs">Docs</a>
+        <a class="btn primary small" href="https://github.com/malkhuzanie/dsd-workbench">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <canvas class="bits" data-bits aria-hidden="true"></canvas>
+      <div class="wrap">
+        <p class="eyebrow">Product · Features</p>
+        <h1>A workbench, <em>not just a splitter</em>.</h1>
+        <p>Splitting, proof, tagging, waveform editing and optional online lookup, in one app and one command-line tool that share the same engine.</p>
+      </div>
+    </section>
+
+    <section class="pad-sm">
+      <div class="wrap">
+        <div class="filters" role="group" aria-label="Filter features">
+          <button data-filter="all" aria-pressed="true">All</button>
+          <button data-filter="split" aria-pressed="false">Splitting</button>
+          <button data-filter="trust" aria-pressed="false">Verification</button>
+          <button data-filter="cue" aria-pressed="false">CUE sheets</button>
+          <button data-filter="tags" aria-pressed="false">Tags &amp; names</button>
+          <button data-filter="wave" aria-pressed="false">Waveform</button>
+          <button data-filter="online" aria-pressed="false">Lookup</button>
+          <button data-filter="app" aria-pressed="false">App &amp; CLI</button>
+        </div>
+
+        <div class="grid three">
+          <article class="card" data-cat="split"><span class="tag">Splitting</span><h3>Bit-perfect cuts</h3><ul>
+            <li>Audio is never decoded; cuts land on the exact sample, even off a byte boundary</li>
+            <li>DSF and DSDIFF in, standards-conforming DSF out</li>
+            <li>Mono, stereo, 5.1 and beyond; any DSD rate</li>
+            <li>Multi-file CUE sheets (one file per side) and batches of whole folders</li></ul></article>
+
+          <article class="card" data-cat="split"><span class="tag">Splitting</span><h3>Safe by default</h3><ul>
+            <li>Sources and CUE sheets are never modified</li>
+            <li>No overwriting unless you allow it</li>
+            <li>Atomic writes: temporary file, renamed on success</li>
+            <li>Cancel mid-track; real progress, throughput and time remaining</li>
+            <li>Free space, write access and path limits checked first</li></ul></article>
+
+          <article class="card" data-cat="trust"><span class="tag">Verification</span><h3>Proof, not trust</h3><ul>
+            <li>Re-reads every output and compares it bit by bit with the source</li>
+            <li>Identical / differs / missing, with a per-track integrity map</li>
+            <li>Detects a file that is right but shifted; checks tags and cover art</li>
+            <li><code>--verify</code> and <code>--verify-only</code> with a meaningful exit code</li></ul></article>
+
+          <article class="card" data-cat="trust"><span class="tag">Verification</span><h3>Tested the hard way</h3><ul>
+            <li>An independent bit oracle checks synthetic splits with awkward cut points</li>
+            <li>Fuzz targets for the DSF header, ID3 tags, DSDIFF header and CUE parsing</li>
+            <li>Crash reports stay local; one-click diagnostics leave secrets out</li></ul></article>
+
+          <article class="card" data-cat="cue"><span class="tag">CUE sheets</span><h3>Forgiving about real-world sheets</h3><ul>
+            <li>Case-insensitive file names, <code>.wav</code>/<code>.flac</code> swapped for <code>.dsf</code>/<code>.dff</code>, Windows paths</li>
+            <li>Encoding detection: UTF-8, UTF-16, Shift-JIS, GBK, Windows-1252 and more</li>
+            <li>A <b>Locate…</b> button relinks missing sources</li>
+            <li>Pregaps (<code>INDEX 00</code>) and an optional hidden track 00</li></ul></article>
+
+          <article class="card" data-cat="wave cue"><span class="tag">Waveform</span><h3>No CUE sheet? Cut by silence</h3><ul>
+            <li>Zoomable waveform with draggable cut markers</li>
+            <li>Silence detection with tunable threshold, gap and track length</li>
+            <li>Ctrl-drag snaps a marker to a silent gap; loud cuts are flagged</li>
+            <li>Export the result as a CUE sheet</li></ul></article>
+
+          <article class="card" data-cat="tags"><span class="tag">Tags</span><h3>Real tagging</h3><ul>
+            <li>Album defaults with per-track overrides; bulk-edit any selection</li>
+            <li>14 standard fields plus custom <code>TXXX</code> fields</li>
+            <li>Current tags shown beside the proposed ones</li>
+            <li>ISRC, catalogue number, comment and disc number kept from the CUE sheet</li></ul></article>
+
+          <article class="card" data-cat="tags"><span class="tag">Tags</span><h3>Tag-only mode &amp; cover art</h3><ul>
+            <li>Retag existing <code>.dsf</code> files without re-splitting; only the tag is rewritten</li>
+            <li>Cover found next to the CUE sheet and embedded in every track</li>
+            <li>Optionally copied to the album folder as <code>folder.jpg</code></li></ul></article>
+
+          <article class="card" data-cat="tags"><span class="tag">Names</span><h3>Names your way</h3><ul>
+            <li>Templates: <code>{track:02} - {title}</code>, folders such as <code>{albumartist}/{album} ({year})</code></li>
+            <li>Any tag usable, including <code>{tag:MOOD}</code>; live preview</li>
+            <li>Safe on Windows, macOS and Linux; non-Latin titles kept as written</li></ul></article>
+
+          <article class="card" data-cat="online"><span class="tag">Lookup</span><h3>MusicBrainz &amp; Discogs (optional)</h3><ul>
+            <li>Fill titles, artists, composer, conductor, date, label and catalogue number</li>
+            <li>Search by what you type, a release link, or the album's own artist and title</li>
+            <li>Off by default: standard builds contain no network code at all</li>
+            <li>Flags mismatched editions by comparing track lengths; undoable</li></ul></article>
+
+          <article class="card" data-cat="app"><span class="tag">App</span><h3>A comfortable workspace</h3><ul>
+            <li>Batch list, undo/redo, keyboard shortcuts, saved projects</li>
+            <li>Audition playback of either side of any cut</li>
+            <li>Light (paper) and dark themes; WCAG-checked colours</li>
+            <li>CJK titles display correctly; errors say what to do next</li></ul></article>
+
+          <article class="card" data-cat="app"><span class="tag">CLI</span><h3>Scriptable</h3><ul>
+            <li>The GUI and CLI share one engine, so scripts behave like the app</li>
+            <li><code>--dry-run</code>, <code>--verify</code>, <code>--tag-only</code>, <code>--auto</code>, <code>--at</code>, <code>--lookup</code> and more</li>
+            <li>Save a project from the command line and reproduce a split later</li>
+            <li>Headless build without audio output for servers</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="pad soft">
+      <div class="wrap narrow">
+        <div class="section-head reveal" style="margin-bottom:28px">
+          <div class="kicker"><b>·</b>Honest limits</div>
+          <h2>What it <em>doesn't</em> do.</h2>
+        </div>
+        <ul class="reveal" style="margin:0;padding-left:20px">
+          <li>DST-compressed files are not supported (the app says so and explains what to do). Most SACD rip tools can export uncompressed DSD.</li>
+          <li>DSDIFF input is uncompressed only; output is always DSF.</li>
+          <li>Silence detection assumes the gaps between tracks are quiet; a gapless live album needs cuts placed by hand.</li>
+          <li>Audition playback is stereo at audition quality, not a reference DAC path.</li>
+          <li>Tested mostly with generated files; coverage of real-world rips and players is still growing. Please report anything odd.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="cta">
+      <canvas class="bits" data-bits aria-hidden="true"></canvas>
+      <div class="wrap">
+        <h2>Try it on <em>one album</em>.</h2>
+        <p>Open source, MIT licensed, and offline unless you opt in.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/malkhuzanie/dsd-workbench">Get the source</a>
+          <a class="btn ghost" href="how-it-works.html">How it works</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>
+        <a class="brand" href="./"><img src="assets/img/mark.svg" alt="" width="26" height="26">DSD Workbench</a>
+        <p>Cut, tag and verify DSD albums.<br>Open source under the MIT license.</p>
+      </div>
+      <div><h4>Explore</h4><a href="how-it-works.html">How it works</a><a href="features.html">Features</a></div>
+      <div><h4>Project</h4><a href="https://github.com/malkhuzanie/dsd-workbench">GitHub</a><a href="https://github.com/malkhuzanie/dsd-workbench/tree/main/docs">Documentation</a><a href="https://github.com/malkhuzanie/dsd-workbench/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/malkhuzanie/dsd-workbench/issues">Report an issue</a></div>
+      <p class="small">DSD and SACD are trademarks of their respective owners; this project is not affiliated with them. This site loads no third-party scripts, fonts or trackers.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "crates/*",
+    "apps/*",
+]
+# Resolver 3 prefers dependency versions that support the workspace's minimum Rust version.
+resolver = "3"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 2
+
+

@@ -1,0 +1,38 @@
+[package]
+name = "dsd-workbench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A workbench for DSD albums: split DSF/DSDIFF by CUE sheet bit for bit, tag, verify and look up releases"
+license = "MIT"
+repository = "https://github.com/malkhuzanie/dsd-workbench"
+publish = false
+
+[features]
+default = ["playback"]
+# Audition playback through the system audio device. Disable for a headless build
+# (no ALSA/CoreAudio/WASAPI dependency); the rest of the app is unchanged.
+playback = ["dep:rodio"]
+# Look albums up on MusicBrainz. Off by default so the app stays strictly offline and
+# contains no HTTP client unless you ask for one.
+online = ["release-lookup/http"]
+
+[dependencies]
+dsf = { package = "dsd-workbench-dsf", path = "../../crates/dsf" }
+dsdiff = { package = "dsd-workbench-dsdiff", path = "../../crates/dsdiff" }
+eframe = "0.31"
+egui_extras = "0.31"
+rfd = "0.15"
+thiserror = "2"
+rodio = { version = "0.20", default-features = false, optional = true }
+dirs = "6"
+fs2 = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+release-lookup = { package = "dsd-workbench-release-lookup", path = "../../crates/release-lookup" }
+encoding_rs = "0.8"
+chardetng = "1"
+
+[dev-dependencies]
+tempfile = "3"
+

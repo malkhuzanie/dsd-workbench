@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DSD Workbench: cut DSD albums bit for bit</title>
+  <meta name="description" content="Split whole-side DSD recordings (DSF, DSDIFF) into tracks without decoding the audio, tag them, and prove the result is bit-for-bit identical. Open source, offline by default.">
+  <meta name="theme-color" content="#181715">
+  <meta property="og:title" content="DSD Workbench">
+  <meta property="og:description" content="Cut DSD albums into tracks without ever decoding the audio, then prove the result is bit-for-bit identical.">
+  <meta property="og:image" content="assets/img/tracks.png">
+  <link rel="icon" href="assets/img/mark.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/fonts/CormorantGaramond-normal-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="assets/img/mark.svg" alt="" width="30" height="30">DSD Workbench</a>
+      <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <nav aria-label="Main">
+        <a href="how-it-works.html">How it works</a>
+        <a href="features.html">Features</a>
+        <a href="https://github.com/malkhuzanie/dsd-workbench/tree/main/docs">Docs</a>
+        <a class="btn primary small" href="https://github.com/malkhuzanie/dsd-workbench">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="top">
+      <canvas class="scene" id="hero-scene" aria-hidden="true"></canvas>
+      <div class="wrap">
+        <p class="eyebrow">Open source · Offline · MIT</p>
+        <h1>Cut DSD.<br><em>Keep every bit.</em></h1>
+        <p class="lede">Split whole-side DSD recordings into tracks without ever decoding the audio, then prove the result is bit-for-bit identical. Tag, verify and look up releases in one workbench.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/malkhuzanie/dsd-workbench"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg>View on GitHub</a>
+          <a class="btn ghost" href="how-it-works.html">See how it works</a>
+        </div>
+        <ul class="hero-chips" id="hero-chips" aria-hidden="true">
+          <li class="chip"><i></i>01 · 5:41.413</li>
+          <li class="chip"><i></i>02 · 4:17.880</li>
+          <li class="chip"><i></i>03 · 4:34.787</li>
+          <li class="chip"><i></i>04 · 7:48.027</li>
+          <li class="chip"><i></i>05 · 2:53.104</li>
+        </ul>
+      </div>
+      <span class="scroll-hint">Scroll</span>
+    </section>
+
+    <section class="stats" aria-label="At a glance">
+      <div class="wrap">
+        <ul>
+          <li class="reveal"><strong>0<small>×</small></strong><span>audio decoded or re-encoded</span></li>
+          <li class="reveal d1"><strong>1<small>sample</small></strong><span>precision for every cut point</span></li>
+          <li class="reveal d2"><strong>14<small>+</small></strong><span>standard tag fields, plus any custom field</span></li>
+          <li class="reveal d3"><strong>0<small>bytes</small></strong><span>sent anywhere by a default build</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="pad" id="how">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="kicker"><b>i</b>How it works</div>
+          <h2>Four steps, <em>no decoding</em> in any of them.</h2>
+          <p>A DSD side is one long 1-bit stream. Cutting it is a matter of copying the right bits to new files, and then checking that the copy is exact.</p>
+        </div>
+        <div class="steps">
+          <article class="step reveal"><h3>Read</h3><p>Open a CUE sheet or a bare <code>.dsf</code>/<code>.dff</code>. Headers, tags and cut points are read; nothing is modified.</p></article>
+          <article class="step reveal d1"><h3>Cut</h3><p>Cuts land on the exact sample, even off a byte boundary. Drag them on a waveform or let silence detection find the gaps.</p></article>
+          <article class="step reveal d2"><h3>Write</h3><p>Each track is a standards-conforming DSF with its own header and ID3 tags, written to a temporary file and moved into place when complete.</p></article>
+          <article class="step reveal d3"><h3>Verify</h3><p>Every new file is read back and compared with the source, bit by bit, with a map of any difference and a real exit code.</p></article>
+        </div>
+        <p class="center reveal" style="margin-top:40px"><a class="btn ghost" style="color:var(--ink);border-color:var(--hairline)" href="how-it-works.html">Walk through it in 3D →</a></p>
+      </div>
+    </section>
+
+    <section class="pad soft" id="screens">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="kicker"><b>ii</b>The app</div>
+          <h2>Review everything <em>before</em> a byte is written.</h2>
+          <p>A batch workspace for whole collections: every album, every track, every tag, and exactly what will change.</p>
+        </div>
+        <div class="shots">
+          <figure class="shot big reveal"><div class="frame" data-tilt><img src="assets/img/tracks.png" alt="The track list of an album with titles, artists, cut times, output file names and listen buttons" width="1255" height="1375" loading="lazy"></div><figcaption><b>Tracks.</b> Titles, artists and cut times are editable in place; output names update live; listen on either side of any cut.</figcaption></figure>
+          <figure class="shot half reveal"><div class="frame" data-tilt><img src="assets/img/waveform.png" alt="The waveform editor with draggable cut markers and detected silences" width="1255" height="1375" loading="lazy"></div><figcaption><b>Waveform.</b> Zoom, drag cuts, Ctrl-drag to snap to a silent gap, double-click to add one.</figcaption></figure>
+          <figure class="shot half reveal d1"><div class="frame" data-tilt><img src="assets/img/album-metadata.png" alt="Album metadata with the current tags beside the proposed ones, new values highlighted" width="1255" height="1375" loading="lazy"></div><figcaption><b>Metadata.</b> What the file says today beside what will be written, with new values highlighted.</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="pad dark" id="try">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="kicker"><b>iii</b>Try the cut</div>
+          <h2>Silence is <em>the seam</em>.</h2>
+          <p>An interactive sketch of the waveform editor, drawn from synthetic audio. Click to add a cut, drag a marker to move it, right-click to remove it, or let the gaps find themselves.</p>
+        </div>
+        <div class="demo reveal" id="cut-demo" aria-label="Interactive cut demo"></div>
+      </div>
+    </section>
+
+    <section class="pad" id="features">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="kicker"><b>iv</b>What's inside</div>
+          <h2>A workbench, <em>not just a splitter</em>.</h2>
+        </div>
+        <div class="grid three">
+          <article class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg></div><h3>Bit-perfect splitting</h3><p>DSF and DSDIFF in, DSF out. Any channel count, any DSD rate, multi-file CUE sheets, and batches of whole folders.</p></article>
+          <article class="card reveal d1"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.2 7.8 8 9 4.8-1.2 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>Proof, not trust</h3><p>Verify re-reads every output and compares it with the source, finds shifted-but-correct files and checks tags and cover art.</p></article>
+          <article class="card reveal d2"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"/></svg></div><h3>No CUE sheet? No problem</h3><p>Detect the silent gaps automatically or cut by hand on a zoomable waveform, then export the result as a CUE sheet.</p></article>
+          <article class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12 12 20 4 12V4h8l8 8Z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg></div><h3>Real tagging</h3><p>Album defaults, per-track overrides, bulk edits, 14 standard fields plus custom ones, cover art, and a tag-only mode for files you already have.</p></article>
+          <article class="card reveal d1"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m16 15 2 2 4-4"/></svg></div><h3>Names your way</h3><p>Templates such as <code>{track:02} - {title}</code> and <code>{albumartist}/{album} ({year})</code>, safe on Windows, macOS and Linux.</p></article>
+          <article class="card reveal d2"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div><h3>Optional lookup</h3><p>Fill titles and details from MusicBrainz or Discogs, in a build you opt into. The default build contains no network code at all.</p></article>
+        </div>
+        <p class="center reveal" style="margin-top:40px"><a class="btn ghost" style="color:var(--ink);border-color:var(--hairline)" href="features.html">Every feature →</a></p>
+      </div>
+    </section>
+
+    <section class="pad dark" id="safe">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="kicker"><b>v</b>Safe by design</div>
+          <h2>Your recordings are <em>never touched</em>.</h2>
+        </div>
+        <ul class="safe reveal">
+          <li><strong>Sources are read-only.</strong> Audio files and CUE sheets are never modified.</li>
+          <li><strong>No overwriting</strong> unless you explicitly allow it.</li>
+          <li><strong>Atomic writes.</strong> Each track goes to a temporary file and is moved into place only when complete.</li>
+          <li><strong>Checked first.</strong> Free space, write access and path limits are verified before anything starts.</li>
+          <li><strong>Offline, no telemetry, no accounts.</strong> Nothing leaves your computer in a default build.</li>
+          <li><strong>Crash reports stay local,</strong> with a one-click diagnostics copy that leaves secrets out.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="cta" id="get">
+      <canvas class="bits" data-bits aria-hidden="true"></canvas>
+      <div class="wrap">
+        <h2>Build it today. <em>Cut something.</em></h2>
+        <p>Prebuilt binaries for Windows, macOS and Linux will come with the first release. Until then it builds with one command.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/malkhuzanie/dsd-workbench">Get the source</a>
+          <a class="btn ghost" href="https://github.com/malkhuzanie/dsd-workbench/releases">Releases</a>
+        </div>
+        <pre class="cmd"><span class="c"># Rust 1.88 or newer</span>
+<span class="p">$ </span>git clone https://github.com/malkhuzanie/dsd-workbench
+<span class="p">$ </span>cd dsd-workbench
+<span class="p">$ </span>cargo run -p dsd-workbench --release</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>
+        <a class="brand" href="./"><img src="assets/img/mark.svg" alt="" width="26" height="26">DSD Workbench</a>
+        <p>Cut, tag and verify DSD albums.<br>Open source under the MIT license.</p>
+      </div>
+      <div><h4>Explore</h4><a href="how-it-works.html">How it works</a><a href="features.html">Features</a></div>
+      <div><h4>Project</h4><a href="https://github.com/malkhuzanie/dsd-workbench">GitHub</a><a href="https://github.com/malkhuzanie/dsd-workbench/tree/main/docs">Documentation</a><a href="https://github.com/malkhuzanie/dsd-workbench/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/malkhuzanie/dsd-workbench/issues">Report an issue</a></div>
+      <p class="small">DSD and SACD are trademarks of their respective owners; this project is not affiliated with them. This site loads no third-party scripts, fonts or trackers.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+[package]
+name = "dsd-workbench-release-lookup"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Find an album release on MusicBrainz or Discogs and read its track list: request builders and parsers, with no HTTP client unless you ask for one"
+license = "MIT"
+repository = "https://github.com/malkhuzanie/dsd-workbench"
+keywords = ["musicbrainz", "discogs", "metadata", "music", "tagging"]
+categories = ["multimedia::audio", "parser-implementations"]
+
+[lib]
+name = "release_lookup"
+
+[features]
+# A small blocking HTTP client with the pacing each service asks for.
+http = ["dep:ureq"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", optional = true }
