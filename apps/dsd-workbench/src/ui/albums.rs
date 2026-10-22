@@ -11,7 +11,7 @@ use crate::metadata::FieldKey;
 use crate::project::{Entry, OutputMode, RunState, VerifyBadge};
 use crate::snapshot::SourceState;
 
-const ROW_H: f32 = 30.0;
+use super::theme::ROW_H;
 
 pub(super) enum Action {
     Remove(u64),

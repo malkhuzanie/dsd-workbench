@@ -3,10 +3,9 @@
 use crate::error::{Error, Result};
 use crate::source::StreamInfo;
 
-/// Size of the `data` chunk header counted inside `data_chunk_size`.
-pub(super) const DATA_CHUNK_HEADER_LEN: u64 = 12;
+pub(super) use dsf::DATA_CHUNK_HEADER_LEN;
 /// Block size per channel of every DSF file this tool writes.
-pub(super) const OUT_BLOCK_SIZE: u32 = 4096;
+pub(crate) const OUT_BLOCK_SIZE: u32 = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Slice {
@@ -18,6 +17,18 @@ pub(super) struct Slice {
     pub out_blocks: u64,
     /// Audio bytes in the output file (all channels, padding included).
     pub audio_len: u64,
+}
+
+/// Bytes of audio, all channels, that `sample_count` samples per channel take up when written
+/// in whole blocks of `block_size` bytes per channel. `None` for a zero block size or overflow.
+pub(crate) fn audio_bytes(sample_count: u64, block_size: u32, channels: u32) -> Option<u64> {
+    let samples_per_block = u64::from(block_size) * 8;
+    if samples_per_block == 0 {
+        return None;
+    }
+    sample_count
+        .div_ceil(samples_per_block)
+        .checked_mul(u64::from(block_size) * u64::from(channels))
 }
 
 pub(super) fn compute(
@@ -59,10 +70,8 @@ pub(super) fn compute(
     if samples_per_block == 0 {
         return Err(Error::Slice("zero block size".into()));
     }
-    let stride = u64::from(block_size) * u64::from(info.channels);
     let out_blocks = sample_count.div_ceil(samples_per_block);
-    let audio_len = out_blocks
-        .checked_mul(stride)
+    let audio_len = audio_bytes(sample_count, block_size, info.channels)
         .ok_or_else(|| Error::Slice("audio size overflows".into()))?;
 
     Ok(Slice {
@@ -90,6 +99,19 @@ mod tests {
             sample_count: 4 * 32_768,
             msb_first: false,
         }
+    }
+
+    #[test]
+    fn audio_bytes_agrees_with_compute() -> TestResult {
+        for (start, duration) in [(0.0, None), (0.5, Some(1.0)), (1.25, Some(2.5))] {
+            let s = compute(&info(), 4096, start, duration)?;
+            assert_eq!(
+                audio_bytes(s.sample_count, 4096, info().channels),
+                Some(s.audio_len)
+            );
+        }
+        assert_eq!(audio_bytes(1, 0, 2), None, "a zero block size has no size");
+        Ok(())
     }
 
     #[test]

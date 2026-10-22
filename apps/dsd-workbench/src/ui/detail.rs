@@ -1,7 +1,5 @@
 //! The selected album: tracks grid and album/output settings.
 
-use std::sync::{Arc, Mutex};
-
 use eframe::egui::{self, Align, Button, Layout, RichText, TextEdit};
 use egui_extras::{Column, TableBuilder};
 
@@ -9,26 +7,22 @@ use super::DetailTab;
 use super::cells;
 use super::fields;
 use super::listen::{self, ListenState};
+use super::sections::{cover_section, export_cue_section, lookup_section, tag_existing_section};
 use super::theme::{self, Palette};
 use super::verify_view;
 use super::wave_view;
 use super::widgets::{self, Tone};
 use crate::audio::Player;
-use crate::cue_write;
 use crate::diag;
-use crate::engine;
-use crate::lookup;
 use crate::metadata::FieldKey;
-use crate::online;
-use crate::plan::{CoverPlan, PlanOptions, SplitPlan, target_path};
+use crate::plan::{PlanOptions, target_path};
 use crate::project::{Entry, OutputMode};
 use crate::selection::{Keys, TrackSelection};
 use crate::settings::LookupSettings;
 use crate::snapshot::{Loaded, SourceState, TagCache};
 use crate::timecode;
-use release_lookup::{Source, Target};
 
-const ROW_H: f32 = 30.0;
+use theme::ROW_H;
 /// Share of the pane given to the selected-track editor, within these limits.
 const EDITOR_SHARE: f32 = 0.42;
 const EDITOR_MIN_H: f32 = 160.0;
@@ -51,6 +45,8 @@ pub(super) struct Context<'a> {
     pub lookup: &'a mut LookupSettings,
     /// A run is in progress: the pane is read-only.
     pub busy: bool,
+    /// Show the album tab's cards as collapsible sections (the "Collapsible sections" setting).
+    pub collapsible: bool,
     /// How a re-read CUE sheet is interpreted.
     pub options: &'a PlanOptions,
 }
@@ -95,7 +91,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut Context<'_>, entry: &mut Entry) {
     match *cx.tab {
         DetailTab::Tracks => tracks(ui, cx, entry),
         DetailTab::Waveform => wave_view::show(ui, p, &ui.ctx().clone(), entry, cx.wave),
-        DetailTab::Album => album(ui, p, entry, cx.problems, cx.lookup),
+        DetailTab::Album => album(ui, p, cx.collapsible, entry, cx.problems, cx.lookup),
         DetailTab::Verify => verify_view::show(ui, p, entry, cx.verify, cx.busy),
     }
 }
@@ -173,29 +169,30 @@ fn tracks(ui: &mut egui::Ui, cx: &mut Context<'_>, entry: &mut Entry) {
         .column(Column::exact(28.0))
         .column(Column::exact(48.0))
         .column(
-            Column::initial((wide * 0.16).clamp(200.0, 420.0))
+            Column::initial((wide * 0.15).clamp(170.0, 420.0))
                 .at_least(100.0)
                 .clip(true),
         )
         .column(
-            Column::initial((wide * 0.09).clamp(130.0, 220.0))
+            Column::initial((wide * 0.09).clamp(110.0, 220.0))
                 .at_least(80.0)
                 .clip(true),
         )
-        .column(Column::initial(130.0).at_least(80.0).clip(true))
+        .column(Column::initial(110.0).at_least(80.0).clip(true))
         .column(Column::exact(104.0))
-        .column(Column::exact(96.0));
+        .column(Column::exact(88.0));
     if multi {
         table = table.column(Column::initial(110.0).at_least(60.0).clip(true));
     }
     table
         .column(
-            Column::initial((wide * 0.16).clamp(170.0, 400.0))
+            Column::initial((wide * 0.14).clamp(150.0, 400.0))
                 .at_least(120.0)
                 .clip(true),
         )
-        .column(Column::exact(72.0))
-        .column(Column::remainder().at_least(160.0))
+        .column(Column::exact(64.0))
+        // The listen buttons (Track, Start, End and the cut sides) need about this much.
+        .column(Column::remainder().at_least(200.0))
         .header(26.0, |mut header| {
             header.col(|ui| {
                 let mut all = count > 0 && cx.selection.rows.len() == count;
@@ -348,322 +345,21 @@ fn disk_cell(ui: &mut egui::Ui, p: &Palette, loaded: &Loaded, overwrite: bool) {
     }
 }
 
-/// The outcome of a background lookup, shared with the thread that does it.
-type LookupResult = Result<(SplitPlan, lookup::Looked), String>;
-
-#[derive(Clone, Default)]
-struct LookupState {
-    pending: Option<Arc<Mutex<Option<LookupResult>>>>,
-    /// What the person typed: search text, or a release link or id.
-    query: String,
-    /// What the running lookup is searching for, shown with its result.
-    searching: String,
-    message: String,
-}
-
-/// Fills titles and album details from MusicBrainz or Discogs (builds with the `online` feature).
-fn lookup_section(
-    ui: &mut egui::Ui,
-    p: &Palette,
-    entry: &mut Entry,
-    settings: &mut LookupSettings,
-) {
-    widgets::group_title(ui, p, "Online lookup");
-    if !online::ENABLED {
-        widgets::caption(
-            ui,
-            p,
-            "This build is strictly offline. To look up track titles on MusicBrainz or Discogs, build with `--features online`.",
-        );
-        return;
-    }
-    widgets::group(ui, p, |ui| lookup_body(ui, p, entry, settings));
-}
-
-fn lookup_body(ui: &mut egui::Ui, p: &Palette, entry: &mut Entry, settings: &mut LookupSettings) {
-    ui.add_space(theme::space::SM);
-    let sources: Vec<_> = Source::ALL.iter().map(|s| (*s, s.name())).collect();
-    widgets::segmented(ui, &mut settings.source, &sources);
-    widgets::caption(
-        ui,
-        p,
-        &format!(
-            "Fills in titles, artists, date, label and catalogue number. Only the text you search for (or this album's artist and title) is sent to {}. You can undo the result.",
-            settings.source.name()
-        ),
-    );
-
-    let id = egui::Id::new(("lookup", entry.id));
-    let mut state: LookupState = ui.data(|d| d.get_temp(id)).unwrap_or_default();
-
-    // Collect a finished lookup.
-    let finished = state
-        .pending
-        .as_ref()
-        .and_then(|slot| slot.lock().ok().and_then(|mut result| result.take()));
-    if let Some(result) = finished {
-        state.pending = None;
-        state.message = match result {
-            Ok((plan, looked)) => {
-                entry.plan = plan;
-                let mut text = format!(
-                    "Searched {}. Matched {} — {} ({}): {} title(s) and {} album field(s) filled in.",
-                    state.searching,
-                    looked.found.release.artist,
-                    looked.found.release.title,
-                    looked.found.release.date,
-                    looked.applied.titles_set,
-                    looked.applied.fields_set
-                );
-                if let Some(candidate) = &looked.found.candidate {
-                    text.push_str(&format!("\nUsed: {}", candidate.describe()));
-                }
-                for note in &looked.applied.notes {
-                    text.push_str(&format!("\n{note}"));
-                }
-                text
-            }
-            Err(why) => format!("Searched {}. {why}", state.searching),
-        };
-    }
-
-    let running = state.pending.is_some();
-    ui.horizontal(|ui| {
-        ui.add(
-            egui::TextEdit::singleline(&mut state.query)
-                .hint_text("What to search for, or a release link/id. Empty: this album.")
-                .desired_width(380.0),
-        );
-        if ui
-            .add_enabled(!running, egui::Button::new("Look up"))
-            .clicked()
-        {
-            let source = settings.source;
-            let artist = entry.plan.album.value(&FieldKey::ALBUM_ARTIST).to_owned();
-            let album = entry.plan.album.value(&FieldKey::ALBUM).to_owned();
-            match Target::from_input(source, &state.query, &artist, &album) {
-                None => {
-                    state.message =
-                        "Type what to search for, or give this album a title first.".to_owned();
-                }
-                Some(target) => {
-                    state.searching = format!("{} for {}", source.name(), target.describe());
-                    state.message = format!("Searching {}…", state.searching);
-                    let slot: Arc<Mutex<Option<LookupResult>>> = Arc::new(Mutex::new(None));
-                    state.pending = Some(Arc::clone(&slot));
-                    let mut plan = entry.plan.clone();
-                    let token = settings.token();
-                    let ctx = ui.ctx().clone();
-                    std::thread::spawn(move || {
-                        let result = lookup::lookup(
-                            &mut plan,
-                            source,
-                            token.as_deref(),
-                            &target,
-                            &online::get,
-                            lookup::ApplyOptions::default(),
-                        )
-                        .map(|looked| (plan, looked));
-                        if let Ok(mut guard) = slot.lock() {
-                            *guard = Some(result);
-                        }
-                        ctx.request_repaint();
-                    });
-                }
-            }
-        }
-    });
-    if running {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(200));
-    }
-    for line in state.message.lines() {
-        widgets::caption(ui, p, line);
-    }
-    ui.data_mut(|d| d.insert_temp(id, state));
-    ui.add_space(theme::space::SM);
-}
-
-/// Saves the album's cut points and tags as a CUE sheet.
-fn export_cue_section(ui: &mut egui::Ui, p: &Palette, entry: &Entry) {
-    widgets::group_title(ui, p, "CUE sheet");
-    let id = egui::Id::new(("export_cue", entry.id));
-    let mut message: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
-    widgets::group(ui, p, |ui| {
-        widgets::setting_row(
-            ui,
-            p,
-            true,
-            "Export as a CUE sheet",
-            "Save these cut points and tags next to the audio.",
-            |ui| {
-                if ui.button("Export CUE sheet…").clicked()
-                    && let Some(path) = rfd::FileDialog::new()
-                        .set_directory(&entry.base_dir)
-                        .set_file_name(format!("{}.cue", entry.cue_stem()))
-                        .add_filter("CUE sheet", &["cue"])
-                        .save_file()
-                {
-                    message = match std::fs::write(&path, cue_write::to_cue(&entry.plan)) {
-                        Ok(()) => format!(
-                            "Saved {}. Cut times are rounded to 1/75 s; save a project to keep them exactly.",
-                            path.display()
-                        ),
-                        Err(err) => format!("Could not save {}: {err}", path.display()),
-                    };
-                }
-            },
-        );
-        if !message.is_empty() {
-            widgets::caption(ui, p, &message);
-            ui.add_space(theme::space::SM);
-        }
-    });
-    ui.data_mut(|d| d.insert_temp(id, message));
-}
-
-/// Writes the album's tags into files that already exist, without splitting.
-fn tag_existing_section(ui: &mut egui::Ui, p: &Palette, entry: &Entry) {
-    widgets::group_title(ui, p, "Tag existing files");
-    let id = egui::Id::new(("tag_existing", entry.id));
-    let (mut confirmed, mut lines) = ui
-        .data(|data| data.get_temp::<(bool, Vec<String>)>(id))
-        .unwrap_or_default();
-
-    let mut run: Option<bool> = None; // Some(dry_run)
-    widgets::group(ui, p, |ui| {
-        ui.add_space(theme::space::SM);
-        widgets::caption(
-            ui,
-            p,
-            "Writes this album's tags and cover into .dsf files already in the output folder, without splitting. Files are matched by name or leading track number. Only the tag is rewritten; the audio is never touched.",
-        );
-        ui.add_space(theme::space::XS);
-        ui.horizontal(|ui| {
-            if ui.button("Preview").clicked() {
-                run = Some(true);
-            }
-            ui.checkbox(&mut confirmed, "Modify the files in this folder");
-            if ui
-                .add_enabled(confirmed, Button::new("Apply tags"))
-                .clicked()
-            {
-                run = Some(false);
-            }
-        });
-        ui.add_space(theme::space::SM);
-    });
-    if let Some(dry_run) = run {
-        let cancel = std::sync::atomic::AtomicBool::new(false);
-        let dir = entry.output_dir();
-        lines =
-            match engine::tag_existing(&entry.plan, &entry.base_dir, &dir, dry_run, &cancel) {
-                Ok(report) => {
-                    let mut lines = vec![format!("{}: {}", dir.display(), report.summary())];
-                    lines.extend(report.items.iter().map(|item| {
-                        format!("{:02} {}: {}", item.number, item.title, item.describe())
-                    }));
-                    lines
-                }
-                Err(err) => vec![err.to_string()],
-            };
-    }
-    for (i, line) in lines.iter().enumerate() {
-        if i == 0 {
-            ui.label(RichText::new(line).strong());
-        } else {
-            widgets::caption(ui, p, line);
-        }
-    }
-    ui.data_mut(|data| data.insert_temp(id, (confirmed, lines)));
-}
-
-/// Choose the album's cover image and whether to embed and/or copy it.
-fn cover_section(ui: &mut egui::Ui, p: &Palette, entry: &mut Entry) {
-    widgets::group_title(ui, p, "Cover art");
-    let mut plan = entry.plan.cover.clone();
-
-    widgets::group(ui, p, |ui| {
-        cover_body(ui, p, entry, &mut plan);
-    });
-
-    // Choosing a cover is a deliberate edit of the album, so it counts as one.
-    entry.plan.cover = plan;
-}
-
-fn cover_body(ui: &mut egui::Ui, p: &Palette, entry: &Entry, plan: &mut Option<CoverPlan>) {
-    match plan {
-        Some(cover) => {
-            let path = entry.base_dir.join(&cover.file);
-            let status = match std::fs::metadata(&path) {
-                Ok(meta) if meta.len() > crate::cover::MAX_COVER_BYTES => {
-                    "too large to embed".to_owned()
-                }
-                Ok(meta) => crate::disk::format_bytes(meta.len()),
-                Err(_) => "not found".to_owned(),
-            };
-            widgets::setting_row(ui, p, true, &cover.file, &status, |_| {});
-            widgets::setting_row(ui, p, false, "Embed in every track", "", |ui| {
-                widgets::toggle(ui, p, &mut cover.embed);
-            });
-            widgets::setting_row(
-                ui,
-                p,
-                false,
-                "Copy into the album folder",
-                "Saved as folder.jpg.",
-                |ui| {
-                    widgets::toggle(ui, p, &mut cover.copy_to_folder);
-                },
-            );
-        }
-        None => {
-            ui.add_space(theme::space::SM);
-            widgets::caption(
-                ui,
-                p,
-                "No cover.jpg, folder.jpg or front.png was found next to the CUE sheet.",
-            );
-            ui.add_space(theme::space::XS);
-        }
-    }
-    ui.add_space(theme::space::XS);
-    ui.horizontal(|ui| {
-        if ui.button("Choose image…").clicked()
-            && let Some(file) = rfd::FileDialog::new()
-                .set_directory(&entry.base_dir)
-                .add_filter("Image", &["jpg", "jpeg", "png"])
-                .pick_file()
-        {
-            let relative = file
-                .strip_prefix(&entry.base_dir)
-                .map_or_else(|_| file.clone(), std::path::Path::to_path_buf);
-            let (embed, copy) = plan
-                .as_ref()
-                .map_or((true, false), |c| (c.embed, c.copy_to_folder));
-            *plan = Some(CoverPlan {
-                file: relative.to_string_lossy().replace('\\', "/"),
-                embed,
-                copy_to_folder: copy,
-            });
-        }
-        if plan.is_some() && ui.button("Remove").clicked() {
-            *plan = None;
-        }
-    });
-    ui.add_space(theme::space::SM);
-}
-
 fn album(
     ui: &mut egui::Ui,
     p: &Palette,
+    collapsible: bool,
     entry: &mut Entry,
     problems: &[String],
     lookup_settings: &mut LookupSettings,
 ) {
+    // Salted by album: scroll offsets are stored by id, and one left over from another tab or
+    // album would push the first heading under the tab bar.
     egui::ScrollArea::vertical()
+        .id_salt(("album_tab", entry.id))
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            ui.add_space(theme::space::XS);
             for problem in problems {
                 widgets::banner(ui, p, Tone::Bad, problem);
             }
@@ -671,96 +367,138 @@ fn album(
                 widgets::banner(ui, p, Tone::Warn, warning);
             }
 
-            widgets::group_title(ui, p, "Output folder");
             let mut text = entry.output_dir().to_string_lossy().into_owned();
-            widgets::group(ui, p, |ui| {
-                ui.add_space(theme::space::SM);
-                ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 240.0).max(120.0);
-                    if ui
-                        .add(TextEdit::singleline(&mut text).desired_width(width))
-                        .changed()
-                    {
-                        entry.output = OutputMode::Custom(text.clone());
-                    }
-                    if ui.button("Browse…").clicked()
-                        && let Some(dir) = rfd::FileDialog::new()
-                            .set_directory(&entry.base_dir)
-                            .pick_folder()
-                    {
-                        entry.output = OutputMode::Custom(dir.to_string_lossy().into_owned());
-                    }
-                    let custom = matches!(entry.output, OutputMode::Custom(_));
-                    if ui.add_enabled(custom, Button::new("Same as CUE")).clicked() {
-                        entry.output = OutputMode::BesideCue;
-                    }
-                });
-                ui.add_space(theme::space::SM);
-            });
-
-            widgets::group_title(ui, p, "Source files");
-            let mut relink: Option<(String, std::path::PathBuf)> = None;
-            widgets::group(ui, p, |ui| {
-                ui.add_space(theme::space::SM);
-                for (file, info) in &entry.sources {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new(file).monospace());
-                        match &info.state {
-                            SourceState::Ready {
-                                duration_secs,
-                                sample_rate,
-                                channels,
-                            } => {
-                                ui.label(
-                                    RichText::new(format!(
-                                        "{} · {:.4} MHz · {channels} ch",
-                                        timecode::format(*duration_secs),
-                                        f64::from(*sample_rate) / 1e6
-                                    ))
-                                    .color(p.muted),
-                                );
-                            }
-                            SourceState::Missing => {
-                                ui.label(RichText::new("not found").color(p.danger));
-                                if ui.button("Locate…").clicked()
-                                    && let Some(picked) = rfd::FileDialog::new()
-                                        .set_directory(&entry.base_dir)
-                                        .add_filter("DSD audio", &["dsf", "dff"])
-                                        .pick_file()
-                                {
-                                    relink = Some((file.clone(), picked));
-                                }
-                            }
-                            SourceState::Invalid(err) => {
-                                ui.label(RichText::new(err).color(p.danger));
-                            }
+            let folder_summary = text.clone();
+            widgets::card_section(
+                ui,
+                p,
+                collapsible,
+                "output",
+                "Output folder",
+                &folder_summary,
+                true,
+                |ui| {
+                    ui.horizontal(|ui| {
+                        let width = (ui.available_width() - 240.0).max(120.0);
+                        if ui
+                            .add(TextEdit::singleline(&mut text).desired_width(width))
+                            .changed()
+                        {
+                            entry.output = OutputMode::Custom(text.clone());
+                        }
+                        if ui.button("Browse…").clicked()
+                            && let Some(dir) = rfd::FileDialog::new()
+                                .set_directory(&entry.base_dir)
+                                .pick_folder()
+                        {
+                            entry.output = OutputMode::Custom(dir.to_string_lossy().into_owned());
+                        }
+                        let custom = matches!(entry.output, OutputMode::Custom(_));
+                        if ui.add_enabled(custom, Button::new("Same as CUE")).clicked() {
+                            entry.output = OutputMode::BesideCue;
                         }
                     });
-                }
-                ui.add_space(theme::space::XS);
-                if ui.button("Rescan source files").clicked() {
-                    entry.rescan_sources();
-                }
-                ui.add_space(theme::space::SM);
-            });
+                },
+            );
+
+            let mut relink: Option<(String, std::path::PathBuf)> = None;
+            let not_ready = entry
+                .sources
+                .values()
+                .filter(|s| !matches!(s.state, SourceState::Ready { .. }))
+                .count();
+            let sources_summary = match (entry.sources.len(), not_ready) {
+                (n, 0) => format!("{n} file(s), all found"),
+                (n, bad) => format!("{n} file(s), {bad} need attention"),
+            };
+            // A problem opens the card the first time it is seen.
+            let sources_open = not_ready > 0;
+            widgets::card_section(
+                ui,
+                p,
+                collapsible,
+                "sources",
+                "Source files",
+                &sources_summary,
+                sources_open,
+                |ui| {
+                    for (file, info) in &entry.sources {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new(file).monospace());
+                            match &info.state {
+                                SourceState::Ready {
+                                    duration_secs,
+                                    sample_rate,
+                                    channels,
+                                } => {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} · {:.4} MHz · {channels} ch",
+                                            timecode::format(*duration_secs),
+                                            f64::from(*sample_rate) / 1e6
+                                        ))
+                                        .color(p.muted),
+                                    );
+                                }
+                                SourceState::Missing => {
+                                    ui.label(RichText::new("not found").color(p.danger));
+                                    if ui.button("Locate…").clicked()
+                                        && let Some(picked) = rfd::FileDialog::new()
+                                            .set_directory(&entry.base_dir)
+                                            .add_filter("DSD audio", &["dsf", "dff"])
+                                            .pick_file()
+                                    {
+                                        relink = Some((file.clone(), picked));
+                                    }
+                                }
+                                SourceState::Invalid(err) => {
+                                    ui.label(RichText::new(err).color(p.danger));
+                                }
+                            }
+                        });
+                    }
+                    ui.add_space(theme::space::XS);
+                    if ui.button("Rescan source files").clicked() {
+                        entry.rescan_sources();
+                    }
+                },
+            );
             if let Some((old, picked)) = relink {
                 entry.relink_source(&old, &picked);
             }
 
-            widgets::group_title(ui, p, "Album metadata");
             let first = entry.plan.source_files().into_iter().next();
             let current = first
                 .and_then(|file| entry.sources.get(&file))
                 .and_then(|source| source.tags.tags())
                 .cloned()
                 .unwrap_or_default();
-            widgets::group(ui, p, |ui| {
-                fields::album_editor(ui, p, &mut entry.plan, &current);
-            });
+            let metadata_summary = {
+                let (artist, album) = (
+                    entry.plan.album.value(&FieldKey::ALBUM_ARTIST),
+                    entry.plan.album.value(&FieldKey::ALBUM),
+                );
+                match (artist.is_empty(), album.is_empty()) {
+                    (false, false) => format!("{artist} — {album}"),
+                    (true, false) => album.to_owned(),
+                    (false, true) => artist.to_owned(),
+                    (true, true) => "no album tags yet".to_owned(),
+                }
+            };
+            widgets::card_section(
+                ui,
+                p,
+                collapsible,
+                "metadata",
+                "Album metadata",
+                &metadata_summary,
+                true,
+                |ui| fields::album_editor(ui, p, &mut entry.plan, &current),
+            );
 
-            cover_section(ui, p, entry);
-            lookup_section(ui, p, entry, lookup_settings);
-            export_cue_section(ui, p, entry);
-            tag_existing_section(ui, p, entry);
+            cover_section(ui, p, collapsible, entry);
+            lookup_section(ui, p, collapsible, entry, lookup_settings);
+            export_cue_section(ui, p, collapsible, entry);
+            tag_existing_section(ui, p, collapsible, entry);
         });
 }

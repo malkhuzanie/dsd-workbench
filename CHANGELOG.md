@@ -37,7 +37,9 @@ First release.
 - GUI and command line, project files (`.dsfproj`), undo/redo, keyboard shortcuts, audition
   playback (Cargo feature `playback`, default on), first-run guide, CJK font fallback,
   actionable error messages, WCAG-checked light and dark paper themes, a settings dialog
-  with page list, and diagnostics that leave secrets out.
+  with page list, an animated first-run screen, collapsible album-tab sections (switch in
+  Settings), a drop-target overlay, keyboard focus outlines, dismissible result
+  messages, a confirmation before *Clear all*, and diagnostics that leave secrets out.
 
 ### Libraries
 - `dsf`: DSF header parsing and ID3v2 tag read/write (text, custom, comment, cover) with a

@@ -21,17 +21,19 @@
 //! let target = Target::Search { artist: "Artist".into(), album: "Album".into() };
 //! let found = find(Source::Discogs, None, &target, 1, &fetch)?;
 //! assert_eq!(found.release.discs[0].tracks[0].title, "First");
-//! # Ok::<(), String>(())
+//! # Ok::<(), release_lookup::Error>(())
 //! ```
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
 pub mod discogs;
+mod error;
 #[cfg(feature = "http")]
 pub mod http;
 mod model;
 pub mod musicbrainz;
 
+pub use error::Error;
 pub use model::{Candidate, Disc, Release, Request, Source, TrackInfo};
 
 /// What to look up.
@@ -159,15 +161,14 @@ fn search_hits(
     token: Option<&str>,
     target: &Target,
     fetch: Fetch<'_>,
-) -> Result<(Vec<Candidate>, Target), String> {
-    let request = search_request(source, token, target)
-        .ok_or_else(|| "there is nothing to search for".to_owned())?;
-    let hits = parse_search(source, &fetch(&request)?)?;
+) -> Result<(Vec<Candidate>, Target), Error> {
+    let request = search_request(source, token, target).ok_or(Error::NothingToSearch)?;
+    let hits = parse_search(source, &fetch(&request).map_err(Error::Fetch)?)?;
     if hits.is_empty()
         && let Some(retry) = simpler(target)
         && let Some(request) = search_request(source, token, &retry)
     {
-        let hits = parse_search(source, &fetch(&request)?)?;
+        let hits = parse_search(source, &fetch(&request).map_err(Error::Fetch)?)?;
         return Ok((hits, retry));
     }
     Ok((hits, target.clone()))
@@ -194,14 +195,14 @@ fn release_request(source: Source, token: Option<&str>, id: &str) -> Option<Requ
     }
 }
 
-fn parse_search(source: Source, json: &str) -> Result<Vec<Candidate>, String> {
+fn parse_search(source: Source, json: &str) -> Result<Vec<Candidate>, Error> {
     match source {
         Source::MusicBrainz => musicbrainz::parse_search(json),
         Source::Discogs => discogs::parse_search(json),
     }
 }
 
-fn parse_release(source: Source, json: &str) -> Result<Release, String> {
+fn parse_release(source: Source, json: &str) -> Result<Release, Error> {
     match source {
         Source::MusicBrainz => musicbrainz::parse_release(json),
         Source::Discogs => discogs::parse_release(json),
@@ -218,23 +219,17 @@ pub fn find(
     target: &Target,
     track_count: usize,
     fetch: Fetch<'_>,
-) -> Result<Found, String> {
+) -> Result<Found, Error> {
     let mut chosen = None;
     let id = match target {
         Target::Id(id) => id.clone(),
         _ => {
             let (candidates, used) = search_hits(source, token, target, fetch)?;
             let best = choose(&candidates, track_count)
-                .ok_or_else(|| {
-                    if used == *target {
-                        format!("{source} has no release matching {}", target.describe())
-                    } else {
-                        format!(
-                            "{source} has no release matching {} (also tried {})",
-                            target.describe(),
-                            used.describe()
-                        )
-                    }
+                .ok_or_else(|| Error::NoMatch {
+                    source,
+                    wanted: target.describe(),
+                    also_tried: (used != *target).then(|| used.describe()),
                 })?
                 .clone();
             let id = best.id.clone();
@@ -242,9 +237,11 @@ pub fn find(
             id
         }
     };
-    let request = release_request(source, token, &id)
-        .ok_or_else(|| format!("'{id}' is not a {source} release id"))?;
-    let release = parse_release(source, &fetch(&request)?)?;
+    let request = release_request(source, token, &id).ok_or(Error::BadId {
+        source,
+        id: id.clone(),
+    })?;
+    let release = parse_release(source, &fetch(&request).map_err(Error::Fetch)?)?;
     Ok(Found {
         release,
         candidate: chosen,
@@ -335,10 +332,10 @@ mod tests {
     fn failures_say_what_was_wrong() {
         let requests = RefCell::new(Vec::new());
         let blank = Target::Text("  ".into());
-        assert_eq!(
-            find(Source::MusicBrainz, None, &blank, 0, &fake(&requests)).expect_err("blank"),
-            "there is nothing to search for"
-        );
+        let nothing =
+            find(Source::MusicBrainz, None, &blank, 0, &fake(&requests)).expect_err("blank");
+        assert_eq!(nothing, Error::NothingToSearch);
+        assert_eq!(nothing.to_string(), "there is nothing to search for");
         assert!(requests.borrow().is_empty(), "nothing was requested");
 
         let bad = find(
@@ -349,18 +346,33 @@ mod tests {
             &fake(&requests),
         )
         .expect_err("bad id");
-        assert_eq!(bad, "'nope' is not a MusicBrainz release id");
+        assert!(matches!(bad, Error::BadId { .. }), "{bad:?}");
+        assert_eq!(bad.to_string(), "'nope' is not a MusicBrainz release id");
 
         let offline = |_: &Request| Err::<String, String>("network unreachable".into());
-        assert_eq!(
-            find(Source::Discogs, None, &album(), 0, &offline).expect_err("offline"),
-            "network unreachable"
+        let down = find(Source::Discogs, None, &album(), 0, &offline).expect_err("offline");
+        assert_eq!(down, Error::Fetch("network unreachable".into()));
+        assert_eq!(down.to_string(), "network unreachable");
+
+        let garbled = |_: &Request| Ok::<String, String>("not json".into());
+        let garbled = find(Source::Discogs, None, &album(), 0, &garbled).expect_err("garbled");
+        assert!(
+            matches!(
+                garbled,
+                Error::UnexpectedReply {
+                    source: Source::Discogs,
+                    ..
+                }
+            ),
+            "{garbled:?}"
         );
 
         let empty = |_: &Request| Ok::<String, String>(r#"{"results":[],"releases":[]}"#.into());
         let none = find(Source::Discogs, None, &album(), 0, &empty).expect_err("no hits");
+        assert!(matches!(none, Error::NoMatch { .. }), "{none:?}");
         assert!(
-            none.contains("Discogs has no release matching “Kind of Blue” by “Miles Davis”"),
+            none.to_string()
+                .contains("Discogs has no release matching “Kind of Blue” by “Miles Davis”"),
             "{none}"
         );
     }
@@ -525,7 +537,17 @@ mod tests {
 
         let empty = |_: &Request| Ok::<String, String>(r#"{"results":[]}"#.into());
         let err = find(Source::Discogs, None, &target, 4, &empty).expect_err("nothing");
-        assert!(err.contains("also tried"), "{err}");
+        assert!(
+            matches!(
+                err,
+                Error::NoMatch {
+                    also_tried: Some(_),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert!(err.to_string().contains("also tried"), "{err}");
 
         let calls = RefCell::new(0);
         let counting = |_: &Request| {

@@ -11,6 +11,7 @@ mod imp {
     use rodio::{OutputStream, OutputStreamHandle, Source};
 
     use crate::audio::player::PcmSource;
+    use crate::error::{Error, Result};
 
     /// The default output device, opened on first use.
     pub struct Output {
@@ -23,19 +24,22 @@ mod imp {
         }
 
         /// A fresh sink on the device; opening failures are retried on the next call.
-        pub fn open_sink(&mut self) -> Result<Sink, String> {
+        pub fn open_sink(&mut self) -> Result<Sink> {
             if self.stream.is_none() {
                 let started = Instant::now();
                 eprintln!("[audio] opening output device…");
-                let pair =
-                    OutputStream::try_default().map_err(|e| format!("no audio output: {e}"))?;
+                let pair = OutputStream::try_default()
+                    .map_err(|e| Error::Audio(format!("no audio output: {e}")))?;
                 eprintln!("[audio] ready in {} ms", started.elapsed().as_millis());
                 self.stream = Some(pair);
             }
-            let (_, handle) = self.stream.as_ref().ok_or("no audio output")?;
+            let (_, handle) = self
+                .stream
+                .as_ref()
+                .ok_or_else(|| Error::Audio("no audio output".to_owned()))?;
             rodio::Sink::try_new(handle)
                 .map(Sink)
-                .map_err(|e| format!("audio output: {e}"))
+                .map_err(|e| Error::Audio(format!("audio output: {e}")))
         }
     }
 
@@ -84,6 +88,7 @@ mod imp {
 #[cfg(not(feature = "playback"))]
 mod imp {
     use crate::audio::player::PcmSource;
+    use crate::error::{Error, Result};
 
     /// Placeholder for a build without audio output.
     pub struct Output(());
@@ -93,11 +98,11 @@ mod imp {
             Self(())
         }
 
-        pub fn open_sink(&mut self) -> Result<Sink, String> {
-            Err(
+        pub fn open_sink(&mut self) -> Result<Sink> {
+            Err(Error::Audio(
                 "this build of the app has no audio output (built without the `playback` feature)"
                     .to_owned(),
-            )
+            ))
         }
     }
 

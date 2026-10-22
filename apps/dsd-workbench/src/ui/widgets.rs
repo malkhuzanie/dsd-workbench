@@ -8,7 +8,7 @@ const INFO_LABEL_W: f32 = 72.0;
 const FIELD_LABEL_W: f32 = 120.0;
 const BADGE_W: f32 = 100.0;
 const GAP: f32 = 12.0;
-const ROW_H: f32 = 30.0;
+use super::theme::ROW_H;
 
 /// Visual tone of a [`banner`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,6 +213,149 @@ pub fn group<R>(ui: &mut Ui, p: &Palette, add: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
+/// Height of the header row of a collapsible [`card_section`].
+const SECTION_HEADER_H: f32 = 42.0;
+
+/// A titled card. With `collapsible` it is an accordion item: a header showing the title and a
+/// one-line `summary` that opens and closes the body, remembering its state per card
+/// (`key`). Without, it is the plain heading above an always-open [`group`]. The caller
+/// chooses with one flag (the "Collapsible sections" setting), so the old look is one toggle
+/// away.
+#[allow(clippy::too_many_arguments)]
+pub fn card_section(
+    ui: &mut Ui,
+    p: &Palette,
+    collapsible: bool,
+    key: &str,
+    title: &str,
+    summary: &str,
+    default_open: bool,
+    body: impl FnOnce(&mut Ui),
+) {
+    use egui::collapsing_header::CollapsingState;
+
+    if !collapsible {
+        group_title(ui, p, title);
+        group(ui, p, body);
+        return;
+    }
+    ui.add_space(theme::space::SM);
+    let id = ui.make_persistent_id(("section", key));
+    let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    Frame::new()
+        .fill(p.raised)
+        .stroke(Stroke::new(1.0_f32, p.rule))
+        .corner_radius(CornerRadius::same(theme::radius::CARD))
+        .inner_margin(Margin::symmetric(theme::space::LG as i8, 0))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let (rect, response) = ui.allocate_exact_size(
+                vec2(ui.available_width(), SECTION_HEADER_H),
+                egui::Sense::click(),
+            );
+            if response.clicked() {
+                state.toggle(ui);
+            }
+            let open = state.is_open();
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::CollapsingHeader,
+                    ui.is_enabled(),
+                    open,
+                    title,
+                )
+            });
+            focus_ring(ui, p, &response, CornerRadius::same(theme::radius::CONTROL));
+            section_header(
+                ui,
+                p,
+                rect,
+                &response,
+                state.openness(ui.ctx()),
+                title,
+                summary,
+            );
+            state.show_body_unindented(ui, |ui| {
+                hairline(ui, p);
+                ui.add_space(theme::space::SM);
+                body(ui);
+                ui.add_space(theme::space::SM);
+            });
+        });
+    state.store(ui.ctx());
+}
+
+/// Paints the header row of a [`card_section`]: a chevron that turns as it opens, the title, and the
+/// summary in the muted colour, cut with an ellipsis if it does not fit.
+fn section_header(
+    ui: &Ui,
+    p: &Palette,
+    rect: egui::Rect,
+    response: &egui::Response,
+    openness: f32,
+    title: &str,
+    summary: &str,
+) {
+    let painter = ui.painter();
+    if response.hovered() {
+        painter.rect_filled(
+            rect.shrink2(vec2(-8.0, 4.0)),
+            CornerRadius::same(theme::radius::CONTROL),
+            p.button_hover.gamma_multiply(0.55),
+        );
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
+    // A right-pointing chevron, turned a quarter when open.
+    let centre = egui::pos2(rect.left() + 8.0, rect.center().y);
+    let angle = openness * std::f32::consts::FRAC_PI_2;
+    let (sin, cos) = angle.sin_cos();
+    let points: Vec<egui::Pos2> = [(-2.5_f32, -4.5_f32), (2.5, 0.0), (-2.5, 4.5)]
+        .iter()
+        .map(|(x, y)| centre + vec2(x * cos - y * sin, x * sin + y * cos))
+        .collect();
+    let chevron = if response.hovered() || openness > 0.5 {
+        p.accent
+    } else {
+        p.muted
+    };
+    painter.add(egui::Shape::line(points, Stroke::new(2.0_f32, chevron)));
+
+    let font = egui::FontId::proportional(16.0);
+    let title_galley = painter.layout_no_wrap(title.to_owned(), font, p.ink);
+    let title_x = rect.left() + 26.0;
+    let title_width = title_galley.size().x;
+    painter.galley(
+        egui::pos2(title_x, rect.center().y - title_galley.size().y / 2.0),
+        title_galley,
+        p.ink,
+    );
+
+    let room = rect.right() - (title_x + title_width + 16.0);
+    if !summary.is_empty() && room > 40.0 {
+        let mut job = egui::text::LayoutJob::simple_singleline(
+            summary.to_owned(),
+            egui::FontId::proportional(13.0),
+            p.muted,
+        );
+        job.wrap = egui::text::TextWrapping {
+            max_width: room,
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+        let galley = ui.fonts(|fonts| fonts.layout_job(job));
+        painter.galley(
+            egui::pos2(
+                title_x + title_width + 16.0,
+                rect.center().y - galley.size().y / 2.0,
+            ),
+            galley,
+            p.muted,
+        );
+    }
+}
+
 /// A small heading above a [`group`].
 pub fn group_title(ui: &mut Ui, p: &Palette, text: &str) {
     ui.add_space(theme::space::MD);
@@ -278,7 +421,21 @@ pub fn setting_stack(
     ui.add_space(theme::space::SM);
 }
 
-/// A switch. Returns true when it was flipped this frame.
+/// An outline around a control that has keyboard focus, so Tab navigation is visible.
+/// Custom-painted controls call this because egui only draws its own focus ring for its widgets.
+fn focus_ring(ui: &Ui, p: &Palette, response: &egui::Response, radius: impl Into<CornerRadius>) {
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            response.rect.expand(2.0),
+            radius,
+            Stroke::new(2.0_f32, p.accent),
+            egui::StrokeKind::Outside,
+        );
+    }
+}
+
+/// A switch. Returns true when it was flipped this frame. Space and Enter flip it while
+/// focused.
 pub fn toggle(ui: &mut Ui, p: &Palette, on: &mut bool) -> bool {
     let size = vec2(38.0, 20.0);
     let (rect, mut response) = ui.allocate_exact_size(size, egui::Sense::click());
@@ -287,6 +444,10 @@ pub fn toggle(ui: &mut Ui, p: &Palette, on: &mut bool) -> bool {
         *on = !*on;
         response.mark_changed();
     }
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *on, "")
+    });
+    focus_ring(ui, p, &response, rect.height() / 2.0 + 2.0);
     let t = ui.ctx().animate_bool_responsive(response.id, *on);
     let track = if *on { p.accent } else { p.button_hover };
     let radius = rect.height() / 2.0;
@@ -325,16 +486,18 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
 
 /// The one main action of a screen: filled with the accent colour.
 pub fn primary_button(ui: &mut Ui, p: &Palette, enabled: bool, label: &str) -> egui::Response {
-    let fill = if enabled {
-        p.accent
+    // Disabled, it falls back to a quiet button so the label stays readable (a faded accent
+    // fill with light text vanishes on the paper).
+    let (fill, text, stroke) = if enabled {
+        (p.accent, p.paper, Stroke::NONE)
     } else {
-        p.accent.gamma_multiply(0.35)
+        (p.button, p.muted, Stroke::new(1.0_f32, p.rule))
     };
     ui.add_enabled(
         enabled,
-        egui::Button::new(RichText::new(label).strong().color(p.paper))
+        egui::Button::new(RichText::new(label).strong().color(text))
             .fill(fill)
-            .stroke(Stroke::NONE)
+            .stroke(stroke)
             .corner_radius(CornerRadius::same(theme::radius::CONTROL)),
     )
 }
@@ -343,6 +506,15 @@ pub fn primary_button(ui: &mut Ui, p: &Palette, enabled: bool, label: &str) -> e
 pub fn nav_item(ui: &mut Ui, p: &Palette, label: &str, selected: bool) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), 34.0), egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::SelectableLabel,
+            ui.is_enabled(),
+            selected,
+            label,
+        )
+    });
+    focus_ring(ui, p, &response, CornerRadius::same(theme::radius::CONTROL));
     let fill = if selected {
         p.accent.gamma_multiply(0.22)
     } else if response.hovered() {
@@ -373,4 +545,30 @@ pub fn nav_item(ui: &mut Ui, p: &Palette, label: &str, selected: bool) -> egui::
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_diff_compares_trimmed_text() {
+        assert_eq!(Diff::between("", "  "), Diff::Unchanged);
+        assert_eq!(Diff::between("", "Jazz"), Diff::Added);
+        assert_eq!(Diff::between("Jazz", ""), Diff::Removed);
+        assert_eq!(Diff::between("Jazz", " Jazz "), Diff::Unchanged);
+        assert_eq!(Diff::between("Jazz", "Blues"), Diff::Modified);
+    }
+
+    #[test]
+    fn only_a_change_has_a_badge_and_a_tint() {
+        let p = Palette::of(false);
+        assert!(Diff::Unchanged.badge().is_none() && Diff::Unchanged.tint(&p).is_none());
+        for diff in [Diff::Added, Diff::Modified, Diff::Removed] {
+            assert!(
+                diff.badge().is_some() && diff.tint(&p).is_some(),
+                "{diff:?}"
+            );
+        }
+    }
 }

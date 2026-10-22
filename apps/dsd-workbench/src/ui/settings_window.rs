@@ -189,6 +189,14 @@ fn appearance(ui: &mut Ui, p: &Palette, settings: &mut AppSettings, changed: &mu
                 }
             },
         );
+        widgets::setting_row(
+            ui,
+            p,
+            false,
+            "Collapsible sections",
+            "The album tab shows each card under a header that opens and closes. Off: every card stays open under a plain heading.",
+            |ui| *changed |= widgets::toggle(ui, p, &mut settings.collapsible_sections),
+        );
     });
 }
 

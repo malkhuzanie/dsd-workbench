@@ -49,7 +49,7 @@ Design rules: no panics, no `unsafe`, edits are patches, a corrupt tag is an err
 | `project` | `Project` and `Entry` (album): CUE loading, output folders, per-album and cross-album validation, folder scanning. UI-free. |
 | `timecode` | Parse/format editable times. |
 | `engine` | Executes one plan: `splitter` (orchestration, atomic writes, events), `slice` (sample arithmetic), `bits` (bit shifting), `copy` (streaming re-blocking). |
-| `cli` | Argument parsing; builds a `Project`, validates, runs engines sequentially. |
+| `cli` | Builds a `Project` from the arguments, validates, runs engines sequentially. `cli::args` is the pure argument parser. |
 | `ui` | `mod` (app state, layout), `albums` and `detail` (grids), `cells`/`widgets`/`theme`, `worker` (background thread). |
 | `error` | App `Error`, wrapping `dsf::Error` with context. |
 | `audio` | DSD→PCM (`filter`, `stream`), settings, output and transport (`player`, `rodio`), spectrum (`fft`, `spectrum`). |
@@ -68,6 +68,9 @@ Design rules: no panics, no `unsafe`, edits are patches, a corrupt tag is an err
 | `history` | Debounced snapshot undo/redo. Clock-free. |
 | `selection` | Click/Ctrl/Shift row selection rules. |
 | `engine::tagonly` | Applies a plan's tags to existing `.dsf` files without splitting. |
+| `engine::tagcheck` | Compares a file's tags with a plan; shared by verification and tag-only mode. |
+| `ui::welcome` | The empty screen: the animated stage (a pure `phase(t)` timeline plus painter code), the step cards and the shortcut chips. |
+| `ui::run`, `ui::chrome`, `ui::sections` | Starting and polling split/verify runs; the toolbar, albums panel and action bar; the Album-tab cards (lookup, CUE export, tag existing files, cover). All are `impl DsfToolApp` or helpers split out of `ui/mod.rs`. |
 | `ui::fields`, `ui::waveform`, `ui::wave_view`, `ui::analysis_job`, `ui::fonts` | Metadata editors, the waveform widget (with pure geometry), its tab and background analysis, and the CJK font fallback. |
 
 

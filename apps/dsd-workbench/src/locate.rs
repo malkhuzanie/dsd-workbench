@@ -48,6 +48,13 @@ fn is_dsd_extension(ext: &str) -> bool {
     DSD_EXTENSIONS.iter().any(|e| e.eq_ignore_ascii_case(ext))
 }
 
+/// Whether `path` names a DSD file (`.dsf` or `.dff`, in any case).
+pub fn is_dsd_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(is_dsd_extension)
+}
+
 /// Matches `requested` against the file names in one folder.
 pub fn match_listing(listing: &[String], requested: &str) -> Option<Located> {
     let wanted = basename(requested);
@@ -61,8 +68,11 @@ pub fn match_listing(listing: &[String], requested: &str) -> Option<Located> {
     if let Some(name) = listing.iter().find(|n| n.as_str() == wanted) {
         return found(name, Match::Exact);
     }
+    // Sorted once, so that ties resolve the same way on every platform.
+    let mut names: Vec<&String> = listing.iter().collect();
+    names.sort();
     let lower = wanted.to_lowercase();
-    if let Some(name) = sorted(listing).find(|n| n.to_lowercase() == lower) {
+    if let Some(name) = names.iter().find(|n| n.to_lowercase() == lower) {
         return found(name, Match::Case);
     }
 
@@ -71,7 +81,7 @@ pub fn match_listing(listing: &[String], requested: &str) -> Option<Located> {
     // Prefer `.dsf` over `.dff`, exact-case stems over case-insensitive ones.
     for exact_case in [true, false] {
         for wanted_ext in DSD_EXTENSIONS {
-            let hit = sorted(listing).find(|n| {
+            let hit = names.iter().find(|n| {
                 let (s, e) = split_extension(n);
                 e.eq_ignore_ascii_case(wanted_ext)
                     && if exact_case {
@@ -91,13 +101,6 @@ pub fn match_listing(listing: &[String], requested: &str) -> Option<Located> {
         }
     }
     None
-}
-
-/// Names in a stable order so that ties resolve the same way on every platform.
-fn sorted(listing: &[String]) -> impl Iterator<Item = &String> {
-    let mut all: Vec<&String> = listing.iter().collect();
-    all.sort();
-    all.into_iter()
 }
 
 /// DSD files in a listing, for suggestions.

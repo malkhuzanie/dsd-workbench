@@ -14,7 +14,7 @@ mod tag;
 pub use edit::{Change, FrameId, Picture, TagEdit, WriteOptions};
 pub use error::{Error, Result};
 pub use field::{Field, Target, Track, custom_fields, read_track, text, text_frames};
-pub use header::{AUDIO_OFFSET, DsfHeader};
+pub use header::{AUDIO_OFFSET, DATA_CHUNK_HEADER_LEN, DsfHeader};
 pub use storage::Storage;
 pub use tag::{read_path, read_tag, remove_tag, update_path, update_tag, write_tag};
 

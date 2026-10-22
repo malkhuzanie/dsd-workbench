@@ -91,9 +91,9 @@ impl Default for Naming {
 impl Naming {
     /// Why the templates cannot be used, if they cannot.
     pub fn validate(&self) -> Result<(), TemplateError> {
-        Template::parse(&self.file)?;
+        let file = Template::parse(&self.file)?;
         Template::parse(&self.folder)?;
-        if Template::parse(&self.file)?.is_blank() {
+        if file.is_blank() {
             return Err(TemplateError::Empty);
         }
         Ok(())

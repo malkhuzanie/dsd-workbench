@@ -109,10 +109,13 @@ pub fn apply(
         ));
     }
 
-    for index in 0..plan.tracks.len() {
-        let Some(number) = plan.tracks.get(index).map(|t| t.meta.number) else {
-            continue;
-        };
+    let durations: Vec<Option<f64>> = (0..plan.tracks.len())
+        .map(|index| plan.duration_of(index))
+        .collect();
+    // The album and the tracks are separate fields, so one can be read while the other changes.
+    let album = &plan.album;
+    for (track, duration) in plan.tracks.iter_mut().zip(durations) {
+        let number = track.meta.number;
         let Some(info) = chosen.tracks.iter().find(|t| t.position == number) else {
             if number > 0 {
                 done.notes
@@ -120,7 +123,6 @@ pub fn apply(
             }
             continue;
         };
-        let album = plan.album.clone();
         let wanted = [
             (FieldKey::TITLE, info.title.as_str()),
             (FieldKey::ARTIST, info.artist.as_str()),
@@ -135,20 +137,17 @@ pub fn apply(
         ];
         for (key, value) in wanted {
             let value = value.trim();
-            let blank = album
-                .resolve(&plan.tracks[index].meta, &key)
-                .trim()
-                .is_empty();
+            let blank = album.resolve(&track.meta, &key).trim().is_empty();
             if value.is_empty() || !(options.overwrite || blank) {
                 continue;
             }
             // `assign` stores a value on the track only when it differs from the album's.
-            plan.tracks[index].meta.assign(&album, key.clone(), value);
+            track.meta.assign(album, key.clone(), value);
             if key == FieldKey::TITLE {
                 done.titles_set += 1;
             }
         }
-        if let (Some(wanted), Some(actual)) = (info.seconds, plan.duration_of(index))
+        if let (Some(wanted), Some(actual)) = (info.seconds, duration)
             && (wanted - actual).abs() > LENGTH_TOLERANCE_SECONDS
         {
             done.notes.push(format!(
@@ -181,7 +180,7 @@ pub fn lookup(
     target: &Target,
     fetch: Fetch<'_>,
     options: ApplyOptions,
-) -> Result<Looked, String> {
+) -> Result<Looked, release_lookup::Error> {
     let tracks = plan.tracks.iter().filter(|t| t.meta.number > 0).count();
     let found = release_lookup::find(source, token, target, tracks, fetch)?;
     let applied = apply(plan, &found.release, 0, options);

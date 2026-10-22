@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use crate::cover;
 use crate::cue::{CueParser, CueSheet, CueTrack};
 use crate::disk;
-use crate::engine::AlbumReport;
+use crate::engine::{self, AlbumReport};
 use crate::error::{Error, Result};
 use crate::locate::{self, Match};
 use crate::metadata::FieldKey;
-use crate::plan::{self, CoverPlan, PlanOptions, SplitPlan, target_path};
+use crate::plan::{self, CoverPlan, PlanOptions, SplitPlan};
 use crate::snapshot::{self, SourceInfo, SourceState};
 use crate::timecode;
 
@@ -250,7 +250,7 @@ impl Entry {
             out.push("The output path exists but is not a folder.".to_owned());
         }
         for track in &self.plan.tracks {
-            let target = out_dir.join(target_path(&self.plan.naming, &self.plan.album, track));
+            let target = self.plan.output_path(&out_dir, track);
             if self
                 .sources
                 .keys()
@@ -273,7 +273,6 @@ impl Entry {
 
     /// Bytes the split will write: whole blocks per channel plus a tag allowance.
     pub fn estimated_bytes(&self) -> u64 {
-        const BLOCK: u64 = 4096;
         let mut total = 0u64;
         for (i, track) in self.plan.tracks.iter().enumerate() {
             let Some(SourceState::Ready {
@@ -284,15 +283,18 @@ impl Entry {
             else {
                 continue;
             };
-            let seconds = self
-                .plan
-                .duration_of(i)
-                .unwrap_or(duration_secs - track.start_seconds)
-                .max(0.0);
-            let samples = seconds * f64::from(*sample_rate);
-            let blocks = (samples / (BLOCK * 8) as f64).ceil() as u64;
-            total =
-                total.saturating_add(blocks * BLOCK * u64::from(*channels) + TAG_ALLOWANCE_BYTES);
+            // Both ends are rounded from absolute times, as the engine does, so the estimate
+            // agrees with the size of what is written.
+            let rate = f64::from(*sample_rate);
+            let start = (track.start_seconds * rate).round().max(0.0) as u64;
+            let end = match self.plan.duration_of(i) {
+                Some(seconds) => ((track.start_seconds + seconds) * rate).round().max(0.0) as u64,
+                None => (duration_secs * rate).round() as u64,
+            };
+            let audio =
+                engine::audio_bytes(end.saturating_sub(start), engine::OUT_BLOCK_SIZE, *channels)
+                    .unwrap_or(0);
+            total = total.saturating_add(audio.saturating_add(TAG_ALLOWANCE_BYTES));
         }
         total
     }
@@ -400,17 +402,29 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn add(&mut self, cue_path: &Path) -> Result<u64> {
-        let key = fs::canonicalize(cue_path)
-            .map_err(Error::io(format!("opening {}", cue_path.display())))?;
+    /// Adds the album that `source` (a CUE sheet or audio file) identifies, built by `make`
+    /// from the new id, the canonical path and the project options. Refuses a repeat.
+    fn insert(
+        &mut self,
+        source: &Path,
+        make: impl FnOnce(u64, PathBuf, &PlanOptions) -> Result<Entry>,
+    ) -> Result<u64> {
+        let key =
+            fs::canonicalize(source).map_err(Error::io(format!("opening {}", source.display())))?;
         if self.entries.iter().any(|e| e.key == key) {
             return Err(Error::AlreadyAdded);
         }
         let id = self.next_id;
-        let entry = Entry::open(id, key, cue_path, &self.options)?;
+        let entry = make(id, key, &self.options)?;
         self.next_id += 1;
         self.entries.push(entry);
         Ok(id)
+    }
+
+    pub fn add(&mut self, cue_path: &Path) -> Result<u64> {
+        self.insert(cue_path, |id, key, options| {
+            Entry::open(id, key, cue_path, options)
+        })
     }
 
     /// Starts an album from audio files, with no CUE sheet. Each file contributes a first
@@ -419,18 +433,11 @@ impl Project {
     /// The album is named after its first file and writes beside it.
     pub fn add_audio(&mut self, files: &[AudioFile]) -> Result<u64> {
         let first = files.first().ok_or(Error::NoTracks)?;
-        let key = fs::canonicalize(&first.path)
-            .map_err(Error::io(format!("opening {}", first.path.display())))?;
-        if self.entries.iter().any(|e| e.key == key) {
-            return Err(Error::AlreadyAdded);
-        }
         let base_dir = plan::base_dir(&first.path);
         let (sheet, cue_path) = sheet_from_audio(files, &base_dir);
-        let id = self.next_id;
-        let entry = Entry::from_sheet(id, key, &cue_path, sheet, &self.options, true)?;
-        self.next_id += 1;
-        self.entries.push(entry);
-        Ok(id)
+        self.insert(&first.path, |id, key, options| {
+            Entry::from_sheet(id, key, &cue_path, sheet, options, true)
+        })
     }
 
     pub fn get_mut(&mut self, id: u64) -> Option<&mut Entry> {
@@ -472,7 +479,7 @@ impl Project {
             }
             let dir = entry.output_dir();
             for track in &entry.plan.tracks {
-                let path = dir.join(target_path(&entry.plan.naming, &entry.plan.album, track));
+                let path = entry.plan.output_path(&dir, track);
                 let slot = owners
                     .entry(path.to_string_lossy().to_lowercase())
                     .or_insert_with(|| (path, Vec::new()));

@@ -330,12 +330,18 @@ impl SplitPlan {
     /// time slot, number and file. This is how a track list that is in the wrong order is
     /// fixed. Returns `false` if either index does not exist.
     pub fn swap_track_details(&mut self, a: usize, b: usize) -> bool {
-        if a == b || a >= self.tracks.len() || b >= self.tracks.len() {
-            return a == b && a < self.tracks.len();
+        if a == b {
+            return a < self.tracks.len();
         }
-        let first = std::mem::take(&mut self.tracks[a].meta.overrides);
-        let second = std::mem::replace(&mut self.tracks[b].meta.overrides, first);
-        self.tracks[a].meta.overrides = second;
+        let (low, high) = (a.min(b), a.max(b));
+        // Splitting at `high` puts the two tracks in different halves, so both can be borrowed.
+        let Some((head, tail)) = self.tracks.split_at_mut_checked(high) else {
+            return false;
+        };
+        let (Some(first), Some(second)) = (head.get_mut(low), tail.first_mut()) else {
+            return false;
+        };
+        std::mem::swap(&mut first.meta.overrides, &mut second.meta.overrides);
         true
     }
 
@@ -497,11 +503,7 @@ impl SplitPlan {
                 ));
             }
             targets
-                .entry(
-                    target_path(&self.naming, &self.album, track)
-                        .to_string_lossy()
-                        .into_owned(),
-                )
+                .entry(self.target(track).to_string_lossy().into_owned())
                 .or_default()
                 .push(number);
         }
@@ -528,14 +530,29 @@ impl SplitPlan {
         self.tracks.iter().map(|t| t.meta.number).max().unwrap_or(0)
     }
 
+    /// Where `track` is written, relative to the output folder.
+    pub fn target(&self, track: &TrackPlan) -> PathBuf {
+        target_path(&self.naming, &self.album, track)
+    }
+
+    /// Where `track` is written when the album goes to `output_dir`.
+    pub fn output_path(&self, output_dir: &Path, track: &TrackPlan) -> PathBuf {
+        output_dir.join(self.target(track))
+    }
+
+    /// The `TRCK` value written for `track`. Writing and verifying both use it, so they agree.
+    pub fn track_tag(&self, track: &TrackPlan) -> dsf::Track {
+        let total = self.track_total();
+        dsf::Track {
+            number: track.meta.number,
+            total: (total > 0).then_some(total),
+        }
+    }
+
     /// The tag changes written to a freshly split track.
     pub fn tag_edit(&self, track: &TrackPlan, cover: Option<&dsf::Picture>) -> dsf::TagEdit {
         let meta = &track.meta;
-        let total = self.track_total();
-        let mut edit = dsf::TagEdit::new().set_track(dsf::Track {
-            number: meta.number,
-            total: (total > 0).then_some(total),
-        });
+        let mut edit = dsf::TagEdit::new().set_track(self.track_tag(track));
         for key in self.tag_keys(track) {
             let value = self.album.resolve(meta, &key);
             edit = match &key {
@@ -732,6 +749,16 @@ mod tests {
         let plan = SplitPlan::from_cue(&gapped_sheet(), options);
         assert_eq!(plan.tracks.len(), 4);
         assert_eq!(plan.track_total(), 3);
+    }
+
+    #[test]
+    fn the_track_tag_has_no_total_when_every_track_is_numbered_zero() {
+        let mut plan = SplitPlan::from_cue(&sheet(), CueOptions::default());
+        assert_eq!(plan.track_tag(&plan.tracks[0]).to_string(), "1/3");
+        for track in &mut plan.tracks {
+            track.meta.number = 0;
+        }
+        assert_eq!(plan.track_tag(&plan.tracks[0]).to_string(), "0");
     }
 
     fn sheet() -> CueSheet {

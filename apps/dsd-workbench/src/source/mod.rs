@@ -82,6 +82,12 @@ pub mod testing {
     }
 
     impl MemSource {
+        /// A source with the given stream description, for tests that need a particular rate,
+        /// bit order or length. `streams` must all be the same length.
+        pub fn with_info(info: StreamInfo, streams: Vec<Vec<u8>>) -> Self {
+            Self { info, streams }
+        }
+
         /// LSB-first channel streams; `streams` must all be the same length.
         pub fn new(rate: u32, streams: Vec<Vec<u8>>) -> Self {
             let bytes = streams.first().map_or(0, Vec::len);
@@ -120,6 +126,29 @@ pub mod testing {
                 })
                 .collect())
         }
+    }
+
+    /// The bytes of a stereo DSF file with 4096-byte blocks: a header for `sample_count`
+    /// samples per channel at `rate`, then `audio` as the (already interleaved) data.
+    pub fn stereo_dsf(rate: u32, sample_count: u64, audio: &[u8]) -> Vec<u8> {
+        let len = audio.len() as u64;
+        let header = dsf::DsfHeader {
+            total_file_size: dsf::AUDIO_OFFSET + len,
+            metadata_offset: 0,
+            channel_type: 2,
+            channel_count: 2,
+            sample_rate: rate,
+            bits_per_sample: 1,
+            sample_count,
+            block_size: 4096,
+            data_chunk_size: dsf::DATA_CHUNK_HEADER_LEN + len,
+        };
+        let mut bytes = Vec::new();
+        header
+            .write(&mut bytes)
+            .expect("writing to a Vec cannot fail");
+        bytes.extend_from_slice(audio);
+        bytes
     }
 
     /// Pseudo-random bytes (an LCG).

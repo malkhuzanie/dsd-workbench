@@ -8,10 +8,10 @@ use std::time::Instant;
 
 use super::bits::{self, BitOrder};
 use super::slice::{self, DATA_CHUNK_HEADER_LEN, OUT_BLOCK_SIZE, Slice};
+use super::tagcheck::tag_issues;
 use crate::error::{Error, Result};
 use crate::metadata::FieldKey;
-use crate::plan::{SplitPlan, TrackPlan, target_path};
-use crate::snapshot::{self, Loaded};
+use crate::plan::{SplitPlan, TrackPlan};
 use crate::source::{self, Container, DsdSource, StreamInfo};
 
 /// Columns in the per-track comparison maps.
@@ -281,7 +281,7 @@ fn check_track(
     output_dir: &Path,
     progress: &mut dyn FnMut(f32),
 ) -> Result<TrackCheck> {
-    let target = output_dir.join(target_path(&ctx.plan.naming, &ctx.plan.album, track));
+    let target = ctx.plan.output_path(output_dir, track);
     let mut check = TrackCheck::new(ctx.plan, track, &target);
     if !target.is_file() {
         check.verdict = Verdict::Missing;
@@ -422,55 +422,6 @@ fn header_checks(
     Ok(())
 }
 
-/// How the tags of the file at `target` differ from what `plan` says `track` should have.
-/// An empty list means the file's tags match.
-pub(super) fn tag_issues(plan: &SplitPlan, track: &TrackPlan, target: &Path) -> Vec<String> {
-    let mut issues = Vec::new();
-    let quote = |s: &str| {
-        if s.is_empty() {
-            "nothing".to_owned()
-        } else {
-            format!("'{s}'")
-        }
-    };
-    match snapshot::load(target) {
-        Loaded::Tags(found) => {
-            let mut rows: Vec<(String, String, String)> = plan
-                .tag_keys(track)
-                .into_iter()
-                .map(|key| {
-                    let wanted = plan.album.resolve(&track.meta, &key);
-                    let wanted = if wanted.trim().is_empty() { "" } else { wanted };
-                    let name = key.label().to_lowercase();
-                    (name, found.value(&key).to_owned(), wanted.to_owned())
-                })
-                .collect();
-            rows.push((
-                "track".to_owned(),
-                found.track.clone(),
-                format!("{}/{}", track.meta.number, plan.track_total()),
-            ));
-            for (name, have, wanted) in rows {
-                if have != wanted {
-                    issues.push(format!(
-                        "Tag {name}: the file has {}, the plan says {}.",
-                        quote(&have),
-                        quote(&wanted)
-                    ));
-                }
-            }
-            let embeds = plan.cover.as_ref().is_some_and(|c| c.embed);
-            if embeds && !found.has_cover {
-                issues.push("The plan embeds cover art, but the file has none.".to_owned());
-            }
-        }
-        Loaded::Untagged => issues.push("The file has no ID3 tag.".to_owned()),
-        Loaded::Failed(err) => issues.push(format!("Tags could not be read: {err}")),
-        Loaded::Missing => {}
-    }
-    issues
-}
-
 struct Compared {
     channels: Vec<ChannelResult>,
     level: Vec<f32>,
@@ -479,13 +430,6 @@ struct Compared {
 fn bucket_of(byte_index: u64, count: u64) -> usize {
     let scaled = byte_index.saturating_mul(8).saturating_mul(BUCKETS as u64) / count.max(1);
     scaled.min(BUCKETS as u64 - 1) as usize
-}
-
-/// Converts a channel stream to the canonical LSB-first bit order.
-fn canonical(bytes: &mut [u8], msb_first: bool) {
-    if msb_first {
-        bytes.iter_mut().for_each(|b| *b = b.reverse_bits());
-    }
 }
 
 fn compare(
@@ -497,9 +441,8 @@ fn compare(
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(f32),
 ) -> Result<Compared> {
-    let src_msb = src.info().msb_first;
-    let src_order = BitOrder::from_msb(src_msb);
-    let out_msb = out.info().msb_first;
+    let src_order = BitOrder::from_msb(src.info().msb_first);
+    let out_order = BitOrder::from_msb(out.info().msb_first);
 
     let mut results: Vec<ChannelResult> = (0..channels).map(|_| ChannelResult::empty()).collect();
     let mut level_sq = vec![0f64; BUCKETS];
@@ -529,10 +472,9 @@ fn compare(
                 continue;
             };
             let mut want = vec![0u8; n];
-            bits::shift_into(window, shift, src_order, &mut want);
-            canonical(&mut want, src_msb);
+            bits::shift_to_lsb_first(window, shift, src_order, &mut want);
             let mut got = written.clone();
-            canonical(&mut got, out_msb);
+            bits::to_lsb_first(&mut got, out_order);
             if last {
                 bits::clear_tail(&mut want, done, count, BitOrder::LsbFirst);
                 bits::clear_tail(&mut got, done, count, BitOrder::LsbFirst);
@@ -612,18 +554,18 @@ fn find_alignment(
     }
     let no_data = || Error::Slice("no channel data for the alignment search".into());
 
-    let out_msb = out.info().msb_first;
+    let out_order = BitOrder::from_msb(out.info().msb_first);
     let mut probe = out
         .read(0, probe_bits / 8)
         .map_err(Error::io("reading output audio"))?
         .into_iter()
         .next()
         .ok_or_else(no_data)?;
-    canonical(&mut probe, out_msb);
+    bits::to_lsb_first(&mut probe, out_order);
 
     let first_byte = (expected_start as i64 - ALIGN_RADIUS).div_euclid(8);
     let len = ((2 * ALIGN_RADIUS) as usize + probe_bits) / 8 + 2;
-    let src_msb = src.info().msb_first;
+    let src_order = BitOrder::from_msb(src.info().msb_first);
     let total = src.info().sample_count;
     let mut window = src
         .read(first_byte, len)
@@ -631,7 +573,7 @@ fn find_alignment(
         .into_iter()
         .next()
         .ok_or_else(no_data)?;
-    canonical(&mut window, src_msb);
+    bits::to_lsb_first(&mut window, src_order);
     let base = first_byte * 8;
 
     let words = probe_bits / 64;
@@ -666,13 +608,12 @@ fn find_alignment(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
     use super::super::splitter::SplitEngine;
     use super::*;
     use crate::metadata::Fields;
     use crate::naming::Naming;
     use crate::plan::{AlbumMeta, TrackMeta};
+    use crate::source::testing::{noise, stereo_dsf};
 
     type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
 
@@ -690,28 +631,8 @@ mod tests {
     }
 
     fn write_noise_source(path: &Path) -> TestResult {
-        let audio = (BLOCKS * 4096 * 2) as usize;
-        let mut x = 12_345u32;
-        let data: Vec<u8> = (0..audio)
-            .map(|_| {
-                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                (x >> 24) as u8
-            })
-            .collect();
-        let header = dsf::DsfHeader {
-            total_file_size: dsf::AUDIO_OFFSET + audio as u64,
-            metadata_offset: 0,
-            channel_type: 2,
-            channel_count: 2,
-            sample_rate: RATE,
-            bits_per_sample: 1,
-            sample_count: BLOCKS * 32_768,
-            block_size: 4096,
-            data_chunk_size: DATA_CHUNK_HEADER_LEN + audio as u64,
-        };
-        let mut file = File::create(path)?;
-        header.write(&mut file)?;
-        file.write_all(&data)?;
+        let audio = noise((BLOCKS * 4096 * 2) as usize, 12_345);
+        fs::write(path, stereo_dsf(RATE, BLOCKS * 32_768, &audio))?;
         Ok(())
     }
 

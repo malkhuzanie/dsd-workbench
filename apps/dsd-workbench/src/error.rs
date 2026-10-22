@@ -36,6 +36,12 @@ pub enum Error {
     Cover(String),
     #[error("unsupported source file: {0}")]
     UnsupportedSource(String),
+    /// A project file that cannot be read or written as such (not the file I/O around it).
+    #[error("{0}")]
+    Project(String),
+    /// Audition playback could not start or continue (no device, unsupported rate…).
+    #[error("{0}")]
+    Audio(String),
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -78,6 +84,8 @@ impl Error {
             | Self::Cancelled
             | Self::WorkerStopped
             | Self::AlreadyAdded
+            | Self::Project(_)
+            | Self::Audio(_)
             | Self::Internal(_) => None,
         }
     }

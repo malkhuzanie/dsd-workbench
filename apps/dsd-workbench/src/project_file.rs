@@ -151,6 +151,10 @@ fn decode_plan(saved: &SavedPlan, problems: &mut Vec<String>) -> SplitPlan {
 }
 
 fn relative_to(path: &Path, base: &Path) -> Option<String> {
+    // An empty base would "strip" nothing and hand back the whole absolute path.
+    if base.as_os_str().is_empty() {
+        return None;
+    }
     path.strip_prefix(base)
         .ok()
         .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -193,13 +197,12 @@ pub fn to_json(project: &Project, project_dir: &Path) -> Result<String> {
         version: CURRENT_VERSION,
         albums,
     })
-    .map_err(|err| Error::Internal(format!("could not encode the project: {err}")))
+    .map_err(|err| Error::Project(format!("could not encode the project: {err}")))
 }
 
 /// Writes the project to `path`, replacing any existing file only when complete.
 pub fn save(project: &Project, path: &Path) -> Result<()> {
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    let text = to_json(project, dir)?;
+    let text = to_json(project, &directory_of(path))?;
     let mut temp = path.as_os_str().to_owned();
     temp.push(".tmp");
     let temp = PathBuf::from(temp);
@@ -213,19 +216,22 @@ pub fn save(project: &Project, path: &Path) -> Result<()> {
 pub fn load(project: &mut Project, path: &Path) -> Result<LoadReport> {
     let text =
         fs::read_to_string(path).map_err(Error::io(format!("reading {}", path.display())))?;
-    from_json(
-        project,
-        &text,
-        path.parent().unwrap_or_else(|| Path::new(".")),
-    )
+    from_json(project, &text, &directory_of(path))
+}
+
+/// The folder a project file lives in, as an absolute path so album paths can be made relative
+/// to it even when the file was given as a bare name like `album.dsfproj`.
+fn directory_of(path: &Path) -> PathBuf {
+    let dir = crate::plan::base_dir(path);
+    std::path::absolute(&dir).unwrap_or(dir)
 }
 
 /// [`load`] from text already in memory.
 pub fn from_json(project: &mut Project, text: &str, project_dir: &Path) -> Result<LoadReport> {
     let saved: SavedProject = serde_json::from_str(text)
-        .map_err(|err| Error::Internal(format!("this is not a valid project file: {err}")))?;
+        .map_err(|err| Error::Project(format!("this is not a valid project file: {err}")))?;
     if saved.version > CURRENT_VERSION {
-        return Err(Error::Internal(format!(
+        return Err(Error::Project(format!(
             "this project was saved by a newer version (format {}); update the app to open it",
             saved.version
         )));
@@ -326,6 +332,24 @@ mod tests {
         let mut project = Project::default();
         project.add(&dir.path().join("album.cue"))?;
         Ok((dir, project))
+    }
+
+    #[test]
+    fn a_bare_project_name_is_resolved_to_an_absolute_folder() {
+        assert!(directory_of(Path::new("album.dsfproj")).is_absolute());
+        assert_eq!(
+            directory_of(Path::new("/music/album.dsfproj")),
+            Path::new("/music")
+        );
+    }
+
+    #[test]
+    fn nothing_is_relative_to_an_empty_folder() {
+        assert_eq!(relative_to(Path::new("/music/a.cue"), Path::new("")), None);
+        assert_eq!(
+            relative_to(Path::new("/music/a.cue"), Path::new("/music")).as_deref(),
+            Some("a.cue")
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@
 
 use serde::Deserialize;
 
+use crate::Error;
 use crate::model::{Candidate, Disc, Release, Request, Source, TrackInfo, encode};
 
 const API: &str = "https://api.discogs.com";
@@ -204,9 +205,12 @@ fn split_title(combined: &str) -> (String, String) {
 }
 
 /// Results of a release search. Masters and other result types are skipped.
-pub fn parse_search(json: &str) -> Result<Vec<Candidate>, String> {
+pub fn parse_search(json: &str) -> Result<Vec<Candidate>, Error> {
     let response: SearchResponse =
-        serde_json::from_str(json).map_err(|e| format!("unexpected reply from Discogs: {e}"))?;
+        serde_json::from_str(json).map_err(|e| Error::UnexpectedReply {
+            source: Source::Discogs,
+            detail: e.to_string(),
+        })?;
     Ok(response
         .results
         .into_iter()
@@ -255,9 +259,11 @@ fn flatten(tracks: Vec<Track>, out: &mut Vec<TrackInfo>) {
 
 /// A release with its track list. Discogs lists tracks as one run (sides and discs are
 /// part of the position text), so the result has a single disc numbered in order.
-pub fn parse_release(json: &str) -> Result<Release, String> {
-    let r: RawRelease =
-        serde_json::from_str(json).map_err(|e| format!("unexpected reply from Discogs: {e}"))?;
+pub fn parse_release(json: &str) -> Result<Release, Error> {
+    let r: RawRelease = serde_json::from_str(json).map_err(|e| Error::UnexpectedReply {
+        source: Source::Discogs,
+        detail: e.to_string(),
+    })?;
     let mut tracks = Vec::new();
     flatten(r.tracklist, &mut tracks);
     let format = r

@@ -5,6 +5,7 @@
 
 use serde::Deserialize;
 
+use crate::Error;
 use crate::model::{Candidate, Disc, Release, Request, Source, TrackInfo, encode};
 
 const API: &str = "https://musicbrainz.org/ws/2/release";
@@ -103,9 +104,12 @@ fn first_label(info: &[LabelInfo]) -> (String, String) {
 }
 
 /// Results of a release search.
-pub fn parse_search(json: &str) -> Result<Vec<Candidate>, String> {
-    let response: SearchResponse = serde_json::from_str(json)
-        .map_err(|e| format!("unexpected reply from MusicBrainz: {e}"))?;
+pub fn parse_search(json: &str) -> Result<Vec<Candidate>, Error> {
+    let response: SearchResponse =
+        serde_json::from_str(json).map_err(|e| Error::UnexpectedReply {
+            source: Source::MusicBrainz,
+            detail: e.to_string(),
+        })?;
     Ok(response
         .releases
         .into_iter()
@@ -138,9 +142,11 @@ pub fn parse_search(json: &str) -> Result<Vec<Candidate>, String> {
 }
 
 /// A release with its full track list.
-pub fn parse_release(json: &str) -> Result<Release, String> {
-    let r: RawRelease = serde_json::from_str(json)
-        .map_err(|e| format!("unexpected reply from MusicBrainz: {e}"))?;
+pub fn parse_release(json: &str) -> Result<Release, Error> {
+    let r: RawRelease = serde_json::from_str(json).map_err(|e| Error::UnexpectedReply {
+        source: Source::MusicBrainz,
+        detail: e.to_string(),
+    })?;
     let (label, catalog) = first_label(&r.label_info);
     let discs = r
         .media

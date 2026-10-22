@@ -67,6 +67,7 @@ after it, add a "since 0.x" note to new entries and move retired ones under
 ## Tag-only mode
 
 - **Retag without re-splitting**: apply the album's metadata and cover to `.dsf` files that already exist, in the app (*Album & output → Tag existing files*) or with `--tag-only [--in DIR]`. Only the tag at the end of each file is rewritten; the audio is never touched (proven by a byte-for-byte test).
+- **A clear result**: *Preview changes* and *Apply tags* both leave a banner with the counts (and a hint about the next step) and a list with one row per track: a status chip (Will change, Tagged, Up to date, No file, Ambiguous, Failed), the track and file name, and which tags change (hover for each old and new value, such as `comment: nothing → 'http://…'`). The card header repeats the last result when it is collapsed, the work runs in the background with a spinner, and the confirmation box clears after a write so a second apply is deliberate.
 - Files are matched by the name the tool would give them, then by leading track number (`01 - …`, `1. …`, `Track 03`). Ambiguous matches are never guessed, `--dry-run` previews, and files that are already correct are left alone.
 
 ## Cover art
@@ -100,7 +101,12 @@ after it, add a "since 0.x" note to new entries and move retired ones under
 - **Shortcuts**: Ctrl+O add CUE files, Ctrl+S save project, Ctrl+Z / Ctrl+Y undo and redo.
 - **Fix a wrong track order**: move a track's title and tags up or down between time slots, and renumber 1…N.
 - **Accessible colours**: both themes are checked automatically against WCAG AA contrast (4.5:1 for text).
-- **Guided first run**: the empty screen walks through add → review → listen → split → verify.
+- **Guided first run**: the empty screen shows an animation of what the app does (a DSD stream cut at the track starts, the tracks drifting apart and being checked bit by bit), then walks through add → review → listen → split → verify as five cards, with the shortcuts underneath.
+- **Drop target**: dragging files over the window dims it and says what a drop will do; on the empty screen the animation's frame lights up too.
+- **Collapsible sections**: the album tab shows its cards (output folder, source files, album metadata, cover art, online lookup, CUE sheet, tag existing files) as an accordion. Each header has a one-line summary, such as the album and artist or the cover file, so you can see the state of a card without opening it. Each card remembers whether it is open. *Settings → Appearance → Collapsible sections* turns it off for plain headings over cards that are always open.
+- **Keyboard use**: Tab reaches the switches and the settings list, shows a focus outline, and Space or Enter activates them; they also announce themselves to screen readers.
+- **Messages that stay out of the way**: the result of the last action has its own line below the buttons, can be dismissed, and never wraps into the controls.
+- **Asks before discarding work**: *Clear all* confirms first, since it drops every album's edits and undo history.
 - **Chinese, Japanese and Korean titles display correctly**: the app borrows a CJK font the system already has (Noto Sans CJK, Microsoft YaHei, Yu Gothic, PingFang, …) instead of showing boxes.
 - **Errors say what to do next**: DST-compressed files, full drives, missing permissions, existing files, bad cover images and more each come with a plain-language next step, in the app and on the command line.
 - Light (paper) and dark themes, persistent settings.

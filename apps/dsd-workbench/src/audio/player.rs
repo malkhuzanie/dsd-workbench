@@ -12,6 +12,7 @@ use std::time::Duration;
 use super::backend::{Output, Sink};
 use super::settings::Settings;
 use super::stream::PcmStream;
+use crate::error::{Error, Result};
 use crate::source;
 
 const QUEUE_CHUNKS: usize = 6;
@@ -343,7 +344,7 @@ impl Audio {
             .and_then(|c| c.shared.error.lock().ok().and_then(|mut slot| slot.take()));
         if let Some(message) = failure {
             self.stop();
-            self.publish(|s| s.error = Some(message));
+            self.publish(|s| s.error = Some(message.to_string()));
             return;
         }
         if self.current.as_ref().is_some_and(|c| c.sink.empty()) {
@@ -368,22 +369,19 @@ impl Audio {
         let result = self.start(request, offset, settings);
         self.publish(|s| s.pending = false);
         if let Err(message) = result {
-            self.publish(|s| s.error = Some(message));
+            self.publish(|s| s.error = Some(message.to_string()));
         }
     }
 
-    fn start(
-        &mut self,
-        mut request: Request,
-        offset: f64,
-        settings: Settings,
-    ) -> Result<(), String> {
+    fn start(&mut self, mut request: Request, offset: f64, settings: Settings) -> Result<()> {
         self.stop();
 
-        let source = source::open(&request.path).map_err(|e| e.to_string())?;
+        let source = source::open(&request.path)?;
         let info = source.info().clone();
         if info.sample_rate == 0 {
-            return Err("the source file reports a zero sample rate".to_owned());
+            return Err(Error::Audio(
+                "the source file reports a zero sample rate".to_owned(),
+            ));
         }
         let rate = f64::from(info.sample_rate);
         let total = info.sample_count as f64 / rate;
@@ -408,7 +406,7 @@ impl Audio {
         thread::Builder::new()
             .name("dsf-decode".to_owned())
             .spawn(move || decode_loop(stream, &tx, &flag))
-            .map_err(|e| format!("starting decoder: {e}"))?;
+            .map_err(|e| Error::Audio(format!("starting decoder: {e}")))?;
         sink.append(PcmSource::new(rx, channels, out_rate, Arc::clone(&shared)));
 
         let duration = (end - request.start_seconds).max(0.0);
@@ -445,7 +443,7 @@ fn decode_loop(mut stream: PcmStream, tx: &SyncSender<Vec<f32>>, shared: &Shared
             Ok(None) => break,
             Err(message) => {
                 if let Ok(mut slot) = shared.error.lock() {
-                    *slot = Some(message);
+                    *slot = Some(message.to_string());
                 }
                 break;
             }

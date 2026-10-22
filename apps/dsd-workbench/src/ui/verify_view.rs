@@ -29,7 +29,10 @@ pub(super) struct ViewState {
 }
 
 pub(super) fn show(ui: &mut Ui, p: &Palette, entry: &Entry, state: &mut ViewState, busy: bool) {
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+    egui::ScrollArea::vertical()
+        .id_salt(("verify_tab", entry.id))
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
         ui.horizontal(|ui| {
             if ui.add_enabled(!busy, Button::new("Verify files now")).clicked() {
                 state.request = true;

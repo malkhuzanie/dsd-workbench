@@ -37,6 +37,21 @@ pub(super) fn shift_into(window: &[u8], shift: u32, order: BitOrder, out: &mut [
     }
 }
 
+/// Converts a channel stream to DSF's bit order, with the first sample in time in the least
+/// significant bit. A stream already in that order is left alone.
+pub(super) fn to_lsb_first(bytes: &mut [u8], order: BitOrder) {
+    if order == BitOrder::MsbFirst {
+        bytes.iter_mut().for_each(|b| *b = b.reverse_bits());
+    }
+}
+
+/// [`shift_into`] followed by [`to_lsb_first`]: the bytes a DSF file holds for a channel
+/// that starts `shift` samples into `window`.
+pub(super) fn shift_to_lsb_first(window: &[u8], shift: u32, order: BitOrder, out: &mut [u8]) {
+    shift_into(window, shift, order, out);
+    to_lsb_first(out, order);
+}
+
 /// Zeroes every sample at or beyond `sample_count` in a block of a channel stream.
 /// `first_index` is the stream byte index of `block[0]`.
 pub(super) fn clear_tail(block: &mut [u8], first_index: u64, sample_count: u64, order: BitOrder) {

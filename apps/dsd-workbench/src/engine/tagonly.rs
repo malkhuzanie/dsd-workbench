@@ -4,16 +4,16 @@
 //! are matched to the plan's tracks by the name the plan would give them, then by the
 //! track number at the start of the file name.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::verify::tag_issues;
+use super::tagcheck::{TagChange, tag_changes, tag_issues};
 use crate::cover;
 use crate::error::{Error, Result};
 use crate::locate;
 use crate::metadata::FieldKey;
-use crate::plan::{SplitPlan, target_path};
+use crate::plan::SplitPlan;
 
 /// What happened to one track's file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +37,9 @@ pub struct Item {
     pub title: String,
     pub file: Option<PathBuf>,
     pub outcome: Outcome,
+    /// The tags that differed from the plan before this run (empty when up to date, or when
+    /// no file was found). For a run that wrote, these are what was written.
+    pub changes: Vec<TagChange>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -183,17 +186,21 @@ pub fn apply(
         .tracks
         .iter()
         .map(|track| {
-            let path = dir.join(target_path(&plan.naming, &plan.album, track));
+            let path = plan.output_path(dir, track);
             path.is_file().then_some(path)
         })
         .collect();
+    let taken: HashSet<&PathBuf> = direct.iter().flatten().collect();
     let listing: Vec<String> = locate::list_files(dir)
         .into_iter()
         .filter(|name| is_dsf(name))
-        .filter(|name| !direct.iter().flatten().any(|p| *p == dir.join(name)))
+        .filter(|name| !taken.contains(&dir.join(name)))
         .collect();
-    let open: Vec<usize> = (0..plan.tracks.len())
-        .filter(|i| direct.get(*i).is_some_and(Option::is_none))
+    let open: Vec<usize> = direct
+        .iter()
+        .enumerate()
+        .filter(|(_, found)| found.is_none())
+        .map(|(index, _)| index)
         .collect();
     let numbers: Vec<u32> = open
         .iter()
@@ -207,7 +214,7 @@ pub fn apply(
         .collect();
 
     let mut report = Report::default();
-    for (index, track) in plan.tracks.iter().enumerate() {
+    for (index, (track, direct)) in plan.tracks.iter().zip(direct).enumerate() {
         if cancel.load(Ordering::Relaxed) {
             return Err(Error::Cancelled);
         }
@@ -217,9 +224,10 @@ pub fn apply(
             title,
             file: None,
             outcome: Outcome::NoFile,
+            changes: Vec::new(),
         };
 
-        let path = match direct.get(index).cloned().flatten() {
+        let path = match direct {
             Some(path) => Some(path),
             None => match by_number.remove(&index) {
                 Some(Pairing::File(f)) => listing.get(f).map(|name| dir.join(name)),
@@ -237,6 +245,7 @@ pub fn apply(
         };
 
         if let Some(path) = path {
+            item.changes = tag_changes(plan, track, &path);
             item.outcome = tag_one(plan, track, &path, picture.as_ref(), dry_run);
             item.file = Some(path);
         }
@@ -282,26 +291,12 @@ mod tests {
     use super::*;
     use crate::cue::{CueSheet, CueTrack};
     use crate::plan::CueOptions;
+    use crate::source::testing::stereo_dsf;
 
     type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
 
     fn write_dsf(path: &Path) -> TestResult {
-        let audio = 4096 * 2;
-        let header = dsf::DsfHeader {
-            total_file_size: dsf::AUDIO_OFFSET + audio,
-            metadata_offset: 0,
-            channel_type: 2,
-            channel_count: 2,
-            sample_rate: 2_822_400,
-            bits_per_sample: 1,
-            sample_count: 32_768,
-            block_size: 4096,
-            data_chunk_size: 12 + audio,
-        };
-        let mut bytes = Vec::new();
-        header.write(&mut bytes)?;
-        bytes.extend(vec![0x5A; audio as usize]);
-        fs::write(path, bytes)?;
+        fs::write(path, stereo_dsf(2_822_400, 32_768, &[0x5A; 4096 * 2]))?;
         Ok(())
     }
 
@@ -411,6 +406,37 @@ mod tests {
         assert_eq!(report.count(&Outcome::WouldTag), 1);
         assert_eq!(fs::read(dir.path().join("01.dsf"))?, before);
         assert!(report.summary().contains("would be tagged"));
+        Ok(())
+    }
+
+    #[test]
+    fn each_item_lists_the_tags_that_change() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        write_dsf(&dir.path().join("01.dsf"))?;
+
+        let preview = run(&plan(), dir.path(), true)?;
+        let item = preview.items.first().ok_or("no item")?;
+        let title = item
+            .changes
+            .iter()
+            .find(|c| c.field == "title")
+            .ok_or("no title change")?;
+        assert_eq!((title.have.as_str(), title.wanted.as_str()), ("", "One"));
+        assert_eq!(title.describe(), "title: nothing → 'One'");
+        assert!(item.changes.iter().any(|c| c.field == "track"));
+        assert!(
+            preview.items.get(2).is_some_and(|i| i.changes.is_empty()),
+            "a track with no file has nothing to change"
+        );
+
+        // The same changes are reported when the run writes them, and none the next time.
+        let applied = run(&plan(), dir.path(), false)?;
+        assert_eq!(
+            applied.items.first().map(|i| &i.changes),
+            Some(&item.changes)
+        );
+        let again = run(&plan(), dir.path(), false)?;
+        assert!(again.items.first().is_some_and(|i| i.changes.is_empty()));
         Ok(())
     }
 

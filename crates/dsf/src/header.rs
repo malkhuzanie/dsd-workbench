@@ -4,7 +4,8 @@ use crate::{Error, Result};
 
 const DSD_CHUNK_LEN: u64 = 28;
 const FMT_CHUNK_LEN: u64 = 52;
-const DATA_CHUNK_HEADER_LEN: u64 = 12;
+/// Size of the `data` chunk header, which `data_chunk_size` counts along with the audio.
+pub const DATA_CHUNK_HEADER_LEN: u64 = 12;
 
 /// Offset of the first audio byte in a DSF file (92).
 pub const AUDIO_OFFSET: u64 = DSD_CHUNK_LEN + FMT_CHUNK_LEN + DATA_CHUNK_HEADER_LEN;

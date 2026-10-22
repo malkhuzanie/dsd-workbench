@@ -42,6 +42,9 @@ impl LookupSettings {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppSettings {
     pub dark: bool,
+    /// The Album & output tab shows its cards as collapsible sections (an accordion). Off
+    /// brings back plain headings over cards that are always open.
+    pub collapsible_sections: bool,
     pub verify_after_split: bool,
     pub audio: AudioSettings,
     pub cue: CueOptions,
@@ -56,6 +59,7 @@ impl Default for AppSettings {
         let plan = PlanOptions::default();
         Self {
             dark: false,
+            collapsible_sections: true,
             verify_after_split: true,
             audio: AudioSettings::default(),
             cue: plan.cue,
@@ -92,6 +96,11 @@ impl AppSettings {
             let (key, value) = (key.trim(), value.trim());
             match key {
                 "theme" => settings.dark = value == "dark",
+                "collapsible_sections" => {
+                    if let Ok(on) = value.parse() {
+                        settings.collapsible_sections = on;
+                    }
+                }
                 "verify_after_split" => {
                     if let Ok(on) = value.parse() {
                         settings.verify_after_split = on;
@@ -148,8 +157,9 @@ impl AppSettings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "theme={}\nverify_after_split={}\naudio_rate={}\naudio_quality={}\ncue_gap={}\ncue_hidden_track={}\nname_file={}\nname_folder={}\nname_style={}\nembed_cover={}\ncopy_cover={}\nlookup_source={}\ndiscogs_token={}\n",
+            "theme={}\ncollapsible_sections={}\nverify_after_split={}\naudio_rate={}\naudio_quality={}\ncue_gap={}\ncue_hidden_track={}\nname_file={}\nname_folder={}\nname_style={}\nembed_cover={}\ncopy_cover={}\nlookup_source={}\ndiscogs_token={}\n",
             if self.dark { "dark" } else { "light" },
+            self.collapsible_sections,
             self.verify_after_split,
             self.audio.rate.key(),
             self.audio.quality.key(),
@@ -202,6 +212,7 @@ mod tests {
     fn round_trips() {
         let settings = AppSettings {
             dark: true,
+            collapsible_sections: false,
             verify_after_split: false,
             audio: AudioSettings {
                 rate: RateTarget::Maximum,

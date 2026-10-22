@@ -2,6 +2,9 @@
 
 use eframe::egui::{self, Color32, CornerRadius, Frame, Margin, Shadow, Stroke};
 
+/// Height of a table row and of a field row.
+pub const ROW_H: f32 = 30.0;
+
 /// Spacing scale (a 4 px grid) shared by every screen.
 pub mod space {
     pub const XS: f32 = 4.0;

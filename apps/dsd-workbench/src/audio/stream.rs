@@ -2,6 +2,7 @@
 
 use super::filter::Decimator;
 use super::settings::Settings;
+use crate::error::{Error, Result};
 use crate::source::DsdSource;
 
 const CHUNK_FRAMES: usize = 8192;
@@ -26,15 +27,15 @@ impl PcmStream {
         start_sample: u64,
         end_sample: u64,
         settings: &Settings,
-    ) -> Result<Self, String> {
+    ) -> Result<Self> {
         let info = src.info().clone();
         let filter = Decimator::new(info.sample_rate, info.msb_first, settings)
-            .ok_or_else(|| "unsupported sample rate".to_owned())?;
+            .ok_or_else(|| Error::Audio("unsupported sample rate".to_owned()))?;
 
         let aligned = start_sample & !7;
         let end = end_sample.min(info.sample_count);
         if end <= aligned {
-            return Err("nothing to play".to_owned());
+            return Err(Error::Audio("nothing to play".to_owned()));
         }
         let total_out = (end - aligned).div_ceil(filter.decim() as u64) as usize;
         // Both terms are multiples of 8, so the division is exact.
@@ -61,7 +62,7 @@ impl PcmStream {
     }
 
     /// Next block of interleaved samples, or `None` at the end of the range.
-    pub fn next_chunk(&mut self) -> Result<Option<Vec<f32>>, String> {
+    pub fn next_chunk(&mut self) -> Result<Option<Vec<f32>>> {
         if self.next_out >= self.total_out {
             return Ok(None);
         }
@@ -69,7 +70,10 @@ impl PcmStream {
         let step = self.filter.decim() / 8;
         let first = self.base_byte + (self.next_out * step) as i64;
         let len = (n - 1) * step + self.filter.window_bytes();
-        let channels = self.src.read(first, len).map_err(|e| e.to_string())?;
+        let channels = self
+            .src
+            .read(first, len)
+            .map_err(Error::io("reading the source for playback"))?;
 
         let oc = self.out_channels;
         let mut out = vec![0.0f32; n * oc];
@@ -104,7 +108,7 @@ mod tests {
     use crate::audio::{Quality, RateTarget};
     use crate::source::DsfSource;
 
-    type TestResult = Result<(), Box<dyn std::error::Error>>;
+    type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
 
     const RATE: u32 = 2_822_400;
     const SAMPLES: u64 = 282_240; // 0.1 s
@@ -113,7 +117,7 @@ mod tests {
     const EDGE: usize = 600;
 
     /// A first-order sigma-delta modulation of a sine, packed as a mono DSF.
-    fn modulate(msb_first: bool) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    fn modulate(msb_first: bool) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
         let block = 4096usize;
         let blocks = (SAMPLES as usize).div_ceil(block * 8);
         let mut stream = vec![0u8; blocks * block];

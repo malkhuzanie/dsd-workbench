@@ -10,7 +10,7 @@ use super::slice::{self, DATA_CHUNK_HEADER_LEN, OUT_BLOCK_SIZE};
 use crate::cover;
 use crate::error::{Error, Result};
 use crate::metadata::FieldKey;
-use crate::plan::{SplitPlan, TrackPlan, target_path};
+use crate::plan::{SplitPlan, TrackPlan};
 
 /// Report byte progress after this many output blocks (about 2 MB for stereo).
 const PROGRESS_EVERY_BLOCKS: u64 = 256;
@@ -100,7 +100,7 @@ impl SplitEngine {
             }
 
             let duration = self.plan.duration_of(index);
-            let target = self.output_dir.join(self.target_of(track));
+            let target = self.plan.output_path(&self.output_dir, track);
             let resolve = |key: &FieldKey| self.plan.album.resolve(&track.meta, key).to_owned();
             let report = TrackReport {
                 index,
@@ -211,7 +211,7 @@ impl SplitEngine {
         let Some(first) = self.plan.tracks.first().filter(|_| wanted) else {
             return Ok(());
         };
-        let album_dir = self.output_dir.join(self.target_of(first));
+        let album_dir = self.plan.output_path(&self.output_dir, first);
         let Some(album_dir) = album_dir.parent() else {
             return Ok(());
         };
@@ -228,17 +228,12 @@ impl SplitEngine {
         )))
     }
 
-    /// Where `track` goes, relative to the output folder.
-    fn target_of(&self, track: &TrackPlan) -> PathBuf {
-        target_path(&self.plan.naming, &self.plan.album, track)
-    }
-
     fn ensure_no_conflicts(&self) -> Result<()> {
         let existing: Vec<PathBuf> = self
             .plan
             .tracks
             .iter()
-            .map(|t| self.output_dir.join(self.target_of(t)))
+            .map(|t| self.plan.output_path(&self.output_dir, t))
             .filter(|path| path.exists())
             .collect();
         match existing.first() {
@@ -326,6 +321,7 @@ mod tests {
     use crate::metadata::Fields;
     use crate::naming::Naming;
     use crate::plan::{AlbumMeta, TrackMeta};
+    use crate::source::testing::stereo_dsf;
     use dsf::id3::TagLike;
 
     type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
@@ -335,21 +331,8 @@ mod tests {
     const RATE: u32 = 32_768;
 
     fn write_source(path: &Path) -> TestResult {
-        let audio = BLOCKS * 4096 * 2;
-        let header = dsf::DsfHeader {
-            total_file_size: dsf::AUDIO_OFFSET + audio,
-            metadata_offset: 0,
-            channel_type: 2,
-            channel_count: 2,
-            sample_rate: RATE,
-            bits_per_sample: 1,
-            sample_count: BLOCKS * 32_768,
-            block_size: 4096,
-            data_chunk_size: DATA_CHUNK_HEADER_LEN + audio,
-        };
-        let mut file = File::create(path)?;
-        header.write(&mut file)?;
-        file.write_all(&vec![0x5A; audio as usize])?;
+        let audio = vec![0x5A; (BLOCKS * 4096 * 2) as usize];
+        fs::write(path, stereo_dsf(RATE, BLOCKS * 32_768, &audio))?;
         Ok(())
     }
 

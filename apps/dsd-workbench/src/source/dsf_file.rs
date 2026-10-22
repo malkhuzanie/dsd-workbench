@@ -1,13 +1,12 @@
 use std::io::{self, Read, Seek, SeekFrom};
 
-use dsf::{AUDIO_OFFSET, DsfHeader};
+use dsf::{AUDIO_OFFSET, DATA_CHUNK_HEADER_LEN, DsfHeader};
 
 use super::{Container, DsdSource, PAD_BYTE, StreamInfo};
 use crate::error::{Error, Result};
 
 const MAX_BLOCK_SIZE: u32 = 1 << 20;
 const MAX_CHANNELS: u32 = 64;
-const DATA_CHUNK_HEADER_LEN: u64 = 12;
 
 /// Reads per-channel byte ranges out of the interleaved blocks of a DSF file.
 pub struct DsfSource<R> {

@@ -45,11 +45,7 @@ pub(super) fn copy_slice<W: Write>(
             let window = streams
                 .get(channel)
                 .ok_or_else(|| Error::Slice("source returned too few channels".into()))?;
-            bits::shift_into(window, shift, order, target);
-            if info.msb_first {
-                // DSF stores the first sample in the least significant bit.
-                target.iter_mut().for_each(|b| *b = b.reverse_bits());
-            }
+            bits::shift_to_lsb_first(window, shift, order, target);
             if is_last {
                 let first_index = index.saturating_mul(bs as u64);
                 bits::clear_tail(target, first_index, slice.sample_count, BitOrder::LsbFirst);
@@ -63,10 +59,9 @@ pub(super) fn copy_slice<W: Write>(
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-
     use super::*;
-    use crate::source::{Container, PAD_BYTE, StreamInfo};
+    use crate::source::testing::{MemSource, noise};
+    use crate::source::{Container, StreamInfo};
 
     type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
 
@@ -74,45 +69,6 @@ mod tests {
     const CH: usize = 2;
     const BLOCKS: usize = 5;
     const SPB: u64 = (BS * 8) as u64;
-
-    struct Mem {
-        info: StreamInfo,
-        streams: Vec<Vec<u8>>,
-    }
-
-    impl DsdSource for Mem {
-        fn info(&self) -> &StreamInfo {
-            &self.info
-        }
-        fn read(&mut self, first: i64, len: usize) -> io::Result<Vec<Vec<u8>>> {
-            Ok(self
-                .streams
-                .iter()
-                .map(|s| {
-                    (0..len)
-                        .map(|k| {
-                            let i = first + k as i64;
-                            if i < 0 {
-                                PAD_BYTE
-                            } else {
-                                s.get(i as usize).copied().unwrap_or(PAD_BYTE)
-                            }
-                        })
-                        .collect()
-                })
-                .collect())
-        }
-    }
-
-    fn noise(len: usize, seed: u32) -> Vec<u8> {
-        let mut x = seed;
-        (0..len)
-            .map(|_| {
-                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                (x >> 24) as u8
-            })
-            .collect()
-    }
 
     fn bit(stream: &[u8], index: u64, order: BitOrder) -> u8 {
         let byte = stream.get((index / 8) as usize).copied().unwrap_or(0);
@@ -129,8 +85,8 @@ mod tests {
         let total = BLOCKS as u64 * SPB;
         let order = BitOrder::from_msb(msb_first);
         let streams: Vec<Vec<u8>> = (0..CH).map(|c| noise(BLOCKS * BS, 7 + c as u32)).collect();
-        let mut source = Mem {
-            info: StreamInfo {
+        let mut source = MemSource::with_info(
+            StreamInfo {
                 container: Container::Dsf,
                 sample_rate: 2_822_400,
                 channels: CH as u32,
@@ -138,8 +94,8 @@ mod tests {
                 sample_count: total,
                 msb_first,
             },
-            streams: streams.clone(),
-        };
+            streams.clone(),
+        );
 
         for start in [0u64, 1, 7, 8, 100, 127, 128, 130, 300] {
             for count in [1u64, 5, 8, 100, 128, 200, 340] {
@@ -183,8 +139,8 @@ mod tests {
 
     #[test]
     fn callback_can_stop_the_copy() {
-        let mut source = Mem {
-            info: StreamInfo {
+        let mut source = MemSource::with_info(
+            StreamInfo {
                 container: Container::Dsf,
                 sample_rate: 2_822_400,
                 channels: CH as u32,
@@ -192,8 +148,8 @@ mod tests {
                 sample_count: BLOCKS as u64 * SPB,
                 msb_first: false,
             },
-            streams: vec![vec![0; BLOCKS * BS]; CH],
-        };
+            vec![vec![0; BLOCKS * BS]; CH],
+        );
         let slice = Slice {
             start_sample: 0,
             sample_count: BLOCKS as u64 * SPB,

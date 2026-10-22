@@ -38,6 +38,16 @@ pub struct CueSheet {
     pub warnings: Vec<String>,
 }
 
+/// What the lines being read describe.
+enum Scope {
+    /// The album: everything before the first `TRACK`.
+    Album,
+    /// A track that is being collected.
+    Track(Pending),
+    /// A track that is not audio or is malformed: its lines are ignored.
+    Skipped,
+}
+
 struct Pending {
     number: u32,
     title: Option<String>,
@@ -60,8 +70,7 @@ impl CueParser {
     pub fn parse_str(text: &str) -> CueSheet {
         let mut sheet = CueSheet::default();
         let mut file = String::new();
-        let mut pending: Option<Pending> = None;
-        let mut in_track = false;
+        let mut scope = Scope::Album;
 
         for raw in text.lines() {
             let line = raw.trim_start_matches('\u{feff}').trim();
@@ -69,66 +78,66 @@ impl CueParser {
 
             match command.to_ascii_uppercase().as_str() {
                 "FILE" => {
-                    finish(&mut pending, &mut sheet);
+                    finish(&mut scope, &mut sheet);
                     file = parse_file_name(rest);
                 }
                 "TRACK" => {
-                    finish(&mut pending, &mut sheet);
-                    in_track = true;
+                    finish(&mut scope, &mut sheet);
                     let mut words = rest.split_whitespace();
                     let number = words.next().and_then(|n| n.parse::<u32>().ok());
                     let kind = words.next().unwrap_or("");
-                    pending = match number {
-                        Some(number) if kind.eq_ignore_ascii_case("AUDIO") => Some(Pending {
-                            number,
-                            title: None,
-                            performer: None,
-                            composer: None,
-                            start: None,
-                            pregap: None,
-                            isrc: None,
-                            source_file: file.clone(),
-                        }),
+                    scope = match number {
+                        Some(number) if kind.eq_ignore_ascii_case("AUDIO") => {
+                            Scope::Track(Pending {
+                                number,
+                                title: None,
+                                performer: None,
+                                composer: None,
+                                start: None,
+                                pregap: None,
+                                isrc: None,
+                                source_file: file.clone(),
+                            })
+                        }
                         _ => {
                             sheet
                                 .warnings
                                 .push(format!("Ignored non-audio or malformed track: {line}"));
-                            None
+                            Scope::Skipped
                         }
                     };
                 }
-                "TITLE" => match pending.as_mut() {
-                    Some(track) => track.title = Some(unquote(rest)),
-                    None if !in_track => sheet.album_title = unquote(rest),
-                    None => {}
+                "TITLE" => match &mut scope {
+                    Scope::Track(track) => track.title = Some(unquote(rest)),
+                    Scope::Album => sheet.album_title = unquote(rest),
+                    Scope::Skipped => {}
                 },
-                "PERFORMER" => match pending.as_mut() {
-                    Some(track) => track.performer = Some(unquote(rest)),
-                    None if !in_track => sheet.performer = unquote(rest),
-                    None => {}
+                "PERFORMER" => match &mut scope {
+                    Scope::Track(track) => track.performer = Some(unquote(rest)),
+                    Scope::Album => sheet.performer = unquote(rest),
+                    Scope::Skipped => {}
                 },
-                "SONGWRITER" => set_composer(&mut pending, &mut sheet, in_track, unquote(rest)),
-                "CATALOG" if !in_track => sheet.catalog = unquote(rest),
+                "SONGWRITER" => set_composer(&mut scope, &mut sheet, unquote(rest)),
+                "CATALOG" if matches!(scope, Scope::Album) => sheet.catalog = unquote(rest),
                 "ISRC" => {
-                    if let Some(track) = pending.as_mut() {
+                    if let Scope::Track(track) = &mut scope {
                         track.isrc = Some(unquote(rest));
                     }
                 }
                 "REM" => {
                     let (key, value) = split_command(rest);
+                    let album = matches!(scope, Scope::Album);
                     match key.to_ascii_uppercase().as_str() {
-                        "DATE" if !in_track => sheet.date = unquote(value),
-                        "GENRE" if !in_track => sheet.genre = unquote(value),
-                        "COMMENT" if !in_track => sheet.comment = unquote(value),
-                        "DISCNUMBER" if !in_track => sheet.disc = unquote(value),
-                        "COMPOSER" => {
-                            set_composer(&mut pending, &mut sheet, in_track, unquote(value))
-                        }
+                        "DATE" if album => sheet.date = unquote(value),
+                        "GENRE" if album => sheet.genre = unquote(value),
+                        "COMMENT" if album => sheet.comment = unquote(value),
+                        "DISCNUMBER" if album => sheet.disc = unquote(value),
+                        "COMPOSER" => set_composer(&mut scope, &mut sheet, unquote(value)),
                         _ => {}
                     }
                 }
                 "INDEX" => {
-                    if let Some(track) = pending.as_mut() {
+                    if let Scope::Track(track) = &mut scope {
                         let mut words = rest.split_whitespace();
                         if let (Some(index), Some(time)) = (words.next(), words.next())
                             && let Ok(index @ (0 | 1)) = index.parse::<u32>()
@@ -147,7 +156,7 @@ impl CueParser {
                 _ => {}
             }
         }
-        finish(&mut pending, &mut sheet);
+        finish(&mut scope, &mut sheet);
 
         let (performer, composer) = (sheet.performer.clone(), sheet.composer.clone());
         for track in &mut sheet.tracks {
@@ -162,21 +171,24 @@ impl CueParser {
     }
 }
 
-fn set_composer(
-    pending: &mut Option<Pending>,
-    sheet: &mut CueSheet,
-    in_track: bool,
-    value: String,
-) {
-    match pending.as_mut() {
-        Some(track) => track.composer = Some(value),
-        None if !in_track => sheet.composer = value,
-        None => {}
+fn set_composer(scope: &mut Scope, sheet: &mut CueSheet, value: String) {
+    match scope {
+        Scope::Track(track) => track.composer = Some(value),
+        Scope::Album => sheet.composer = value,
+        Scope::Skipped => {}
     }
 }
 
-fn finish(pending: &mut Option<Pending>, sheet: &mut CueSheet) {
-    let Some(track) = pending.take() else { return };
+/// Ends the track being collected, if any: it is added to the sheet, and the lines up to the
+/// next `TRACK` belong to nothing.
+fn finish(scope: &mut Scope, sheet: &mut CueSheet) {
+    let track = match std::mem::replace(scope, Scope::Skipped) {
+        Scope::Track(track) => track,
+        other => {
+            *scope = other;
+            return;
+        }
+    };
     match track.start {
         Some(start_seconds) => sheet.tracks.push(CueTrack {
             number: track.number,

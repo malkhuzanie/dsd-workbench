@@ -27,6 +27,17 @@ Requires Rust 1.88+ (edition 2024).
 | New CUE command | `cue.rs` + test, then `cue-support.md`. |
 | New run option | `engine::SplitEngine` builder, `cli`, `ui/mod.rs` action bar, `docs/cli.md` and `user-guide.md`. |
 
+## Looking at the UI without a window
+
+`apps/dsd-workbench/src/ui/snapshot.rs` holds `#[ignore]`d tests that run egui for a frame, rasterise it in software and write PPM pictures (they assert nothing). Use them after any layout change:
+
+```sh
+UI_SNAPSHOT_DIR=/tmp/ui cargo test -p dsd-workbench snapshot -- --ignored
+magick /tmp/ui/album-accordion.ppm /tmp/ui/album-accordion.png
+```
+
+`snapshot_welcome` renders the first-run screen at several moments of its animation and two window sizes; `snapshot_album` renders the Tracks and Album & output tabs with the sections collapsible and plain; `snapshot_tag_existing` renders the Tag existing files card after a preview and after applying.
+
 ## Publishing the library crates
 
 The packages are `dsd-workbench-dsf`, `dsd-workbench-dsdiff` and `dsd-workbench-release-lookup` (the short names are taken or ambiguous on crates.io); each keeps its short `[lib] name`.
@@ -34,6 +45,7 @@ The packages are `dsd-workbench-dsf`, `dsd-workbench-dsdiff` and `dsd-workbench-
 1. Check `Cargo.toml` metadata and `repository`.
 2. Add `CHANGELOG.md` and license files; test with real DSD64/128, mono/stereo/multichannel files and ID3 v2.3/v2.4 tags; check output in target players.
 3. `cargo publish --dry-run`; run `cargo-semver-checks` on later releases.
+4. Add a crates.io API token as the repository secret `CARGO_REGISTRY_TOKEN`. Pushing a tag `vX.Y.Z` (which must equal the three crate versions) builds the binaries and, once they succeed, the `publish-crates` job in `.github/workflows/release.yml` publishes the three crates. A published version cannot be replaced, so dry-run first.
 
 Consider moving the slicer into the crate behind a `split` feature.
 
