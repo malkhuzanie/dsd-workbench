@@ -156,7 +156,7 @@ fn stage(ui: &mut egui::Ui, p: &Palette, time: f32, dragging: bool) {
     } else {
         p.rule
     };
-    let stroke = Stroke::new(if dragging { 2.0 } else { 1.0 }, outline);
+    let stroke = Stroke::new(if dragging { 2.0_f32 } else { 1.0 }, outline);
     painter.extend(egui::Shape::dashed_line(
         &[
             rect.left_top(),
@@ -315,7 +315,7 @@ fn cut_scan(
             let age = ((head - x) / (end - start) * 10.0).min(1.0);
             painter.line_segment(
                 [egui::pos2(x, top), egui::pos2(x, bottom)],
-                Stroke::new(2.0, p.accent.gamma_multiply(visible)),
+                Stroke::new(2.0_f32, p.accent.gamma_multiply(visible)),
             );
             let spark = (1.0 - age).max(0.0);
             painter.circle_filled(
@@ -336,7 +336,7 @@ fn cut_scan(
         );
         painter.line_segment(
             [egui::pos2(head, top - 6.0), egui::pos2(head, bottom + 6.0)],
-            Stroke::new(2.5, p.accent),
+            Stroke::new(2.5_f32, p.accent),
         );
     }
     let _ = rect;
@@ -374,7 +374,7 @@ fn verify_sweeps(
         );
         painter.line_segment(
             [egui::pos2(x, top + drift), egui::pos2(x, bottom + drift)],
-            Stroke::new(2.5, p.good),
+            Stroke::new(2.5_f32, p.good),
         );
     }
 }
@@ -402,7 +402,7 @@ fn labels_and_badge(
             painter.rect_stroke(
                 chip,
                 CornerRadius::same(11),
-                Stroke::new(1.0, p.rule.gamma_multiply(alpha)),
+                Stroke::new(1.0_f32, p.rule.gamma_multiply(alpha)),
                 egui::StrokeKind::Inside,
             );
             painter.text(
@@ -417,11 +417,11 @@ fn labels_and_badge(
                 let colour = p.good.gamma_multiply(phase.verified * alpha);
                 painter.line_segment(
                     [tick + egui::vec2(-3.5, 0.0), tick + egui::vec2(-1.0, 3.0)],
-                    Stroke::new(2.0, colour),
+                    Stroke::new(2.0_f32, colour),
                 );
                 painter.line_segment(
                     [tick + egui::vec2(-1.0, 3.0), tick + egui::vec2(4.0, -3.5)],
-                    Stroke::new(2.0, colour),
+                    Stroke::new(2.0_f32, colour),
                 );
             }
         }
@@ -439,7 +439,7 @@ fn labels_and_badge(
         painter.rect_stroke(
             badge,
             CornerRadius::same(15),
-            Stroke::new(1.0, p.good.gamma_multiply(alpha)),
+            Stroke::new(1.0_f32, p.good.gamma_multiply(alpha)),
             egui::StrokeKind::Inside,
         );
         painter.text(
@@ -492,7 +492,7 @@ fn step_card(ui: &mut egui::Ui, p: &Palette, width: f32, number: usize, heading:
     let inner = width - 2.0 * theme::space::MD - 2.0;
     Frame::new()
         .fill(p.raised)
-        .stroke(Stroke::new(1.0, p.rule))
+        .stroke(Stroke::new(1.0_f32, p.rule))
         .corner_radius(CornerRadius::same(theme::radius::CARD))
         .inner_margin(Margin::same(theme::space::MD as i8))
         .show(ui, |ui| {
@@ -528,7 +528,7 @@ fn shortcuts(ui: &mut egui::Ui, p: &Palette) {
         for (keys, action) in SHORTCUTS {
             Frame::new()
                 .fill(p.button)
-                .stroke(Stroke::new(1.0, p.rule))
+                .stroke(Stroke::new(1.0_f32, p.rule))
                 .corner_radius(CornerRadius::same(4))
                 .inner_margin(Margin::symmetric(6, 2))
                 .show(ui, |ui| {
