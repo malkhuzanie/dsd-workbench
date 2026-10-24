@@ -117,6 +117,10 @@ after it, add a "since 0.x" note to new entries and move retired ones under
 - **Headless build**: audio output is a Cargo feature (`playback`, on by default); build without it for servers and minimal Linux systems. Everything except audition playback works.
 - **Release binaries**: a tagged release builds archives (with checksums) for Windows, macOS (Apple silicon and Intel) and Linux.
 
+## Documentation
+
+- **Guides on the website**: the user guide, CLI reference, CUE support, metadata, naming, verification and the rest of `docs/` are also published as pages on the project site, with a sidebar, previous/next links and an edit link on every page. They are built from the same Markdown that lives in the repository, so the two cannot disagree, and a broken link fails the build.
+
 ## Quality bar
 
 - No `unsafe` in the format crates; no panicking `unwrap`/indexing in shipped code; typed errors.

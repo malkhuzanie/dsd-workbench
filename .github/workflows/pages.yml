@@ -1,10 +1,11 @@
 name: Pages
 
-# Publishes the static site in `site/` (plain HTML, CSS and JS; no build step).
+# Publishes the static site in `site/` (plain HTML, CSS and JS). The documentation pages are
+# generated from `docs/` with pandoc just before publishing.
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,7 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - name: Leave out the vendoring tools
+      - name: Build the documentation pages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          site/tools/build-docs.sh
+      - name: Leave out the build tools
         run: rm -rf site/tools
       - uses: actions/upload-pages-artifact@v3
         with:

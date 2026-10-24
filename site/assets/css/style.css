@@ -290,6 +290,7 @@ footer .small { flex-basis: 100%; border-top: 1px solid rgb(250 249 245 / 10%); 
 }
 @media (max-width: 720px) {
   .nav nav { position: fixed; inset: 4.25rem 0 auto 0; flex-direction: column; align-items: stretch; background: rgb(250 249 245 / 97%); color: var(--ink); padding: 0.75rem 1.5rem 1.5rem; transform: translateY(-120%); transition: transform 260ms ease; box-shadow: 0 1.25rem 2.5rem rgb(0 0 0 / 15%); }
+  .nav:not(.open) nav { visibility: hidden; transition: transform 260ms ease, visibility 0s 260ms; }
   .nav.open nav { transform: none; }
   .nav.open { background: rgb(250 249 245 / 97%); color: var(--ink); }
   .nav-toggle { display: block; }

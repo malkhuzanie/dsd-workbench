@@ -38,6 +38,10 @@ magick /tmp/ui/album-accordion.ppm /tmp/ui/album-accordion.png
 
 `snapshot_welcome` renders the first-run screen at several moments of its animation and two window sizes; `snapshot_album` renders the Tracks and Album & output tabs with the sections collapsible and plain; `snapshot_tag_existing` renders the Tag existing files card after a preview and after applying.
 
+## Documentation on the website
+
+The Markdown in `docs/` is also published as web pages. `site/tools/build-docs.sh` (needs pandoc) builds them into `site/docs/`; the Pages workflow runs it on every push that touches `docs/` or `site/`. Add a new document to the page list at the top of the script, link to other documents with plain relative `.md` links (they are rewritten), and run the script before pushing: it fails on a link that points nowhere. See `site/README.md`.
+
 ## Publishing the library crates
 
 The packages are `dsd-workbench-dsf`, `dsd-workbench-dsdiff` and `dsd-workbench-release-lookup` (the short names are taken or ambiguous on crates.io); each keeps its short `[lib] name`.

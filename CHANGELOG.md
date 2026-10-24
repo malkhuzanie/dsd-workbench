@@ -51,3 +51,5 @@ First release.
 - End-to-end tests with an independent bit oracle, `cargo-fuzz` targets and CI on Linux,
   macOS and Windows; minimum supported Rust version 1.88.
 - Release workflow producing Windows, macOS and Linux archives with checksums.
+- Project website, including the guides in `docs/` as web pages built from the same
+  Markdown.

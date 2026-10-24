@@ -1,18 +1,30 @@
 # Website
 
-The project site (home, How it works, Features). Plain HTML, CSS and JavaScript with no build step
-and no third-party requests: fonts are self-hosted and three.js is vendored.
+The project site (home, How it works, Features, Docs). Plain HTML, CSS and JavaScript with no
+third-party requests: fonts are self-hosted and three.js is vendored. The only build step is the
+documentation pages, which are generated from `docs/`.
 
 ## Preview
 
 ```sh
+site/tools/build-docs.sh        # needs pandoc; writes site/docs/ (not committed)
 cd site
 python3 -m http.server 8000     # then open http://localhost:8000
 ```
 
+## Documentation pages
+
+`tools/build-docs.sh` turns the Markdown files in `docs/` into `site/docs/*.html` with pandoc, using
+`tools/docs-template.html` (the site's header, footer and a sidebar) and `tools/docs.lua` (rewrites
+links between documents, sends links out of `docs/` to GitHub, wraps tables). The page list and its
+order are at the top of the script; a new document must be added there to appear. The script fails
+on a link that points nowhere, and the Pages workflow runs it before publishing, so the Markdown
+stays the single source and the repository and the site never disagree.
+
 ## Publish
 
-`.github/workflows/pages.yml` deploys `site/` to GitHub Pages on every push to `main` that touches it.
+`.github/workflows/pages.yml` deploys `site/` to GitHub Pages on every push to `main` that touches
+`site/` or `docs/`.
 Enable it once under Settings → Pages → Source: *GitHub Actions*. All links are relative, so the site
 works under `https://<user>.github.io/<repo>/`.
 
@@ -22,6 +34,9 @@ works under `https://<user>.github.io/<repo>/`.
 |------|------|
 | `index.html`, `how-it-works.html`, `features.html` | The pages |
 | `assets/css/style.css` | All styles; sized in `rem`, and the root size grows with the viewport |
+| `assets/css/docs.css` | Extra styles for the documentation pages |
+| `tools/build-docs.sh`, `docs-template.html`, `docs.lua` | Build the documentation pages from `docs/` |
+| `docs/` | Generated; git-ignored |
 | `assets/js/main.js` | Navigation, reveal on scroll, hover effects; loads the scenes on demand |
 | `assets/js/ribbon.js` | The 3D "DSD stream" (instanced bits that cut, spread and verify) |
 | `assets/js/hero.js` | Home page hero scene (looping timeline) |
