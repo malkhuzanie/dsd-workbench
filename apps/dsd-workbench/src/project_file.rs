@@ -337,10 +337,8 @@ mod tests {
     #[test]
     fn a_bare_project_name_is_resolved_to_an_absolute_folder() {
         assert!(directory_of(Path::new("album.dsfproj")).is_absolute());
-        assert_eq!(
-            directory_of(Path::new("/music/album.dsfproj")),
-            Path::new("/music")
-        );
+        let folder = std::env::temp_dir();
+        assert_eq!(directory_of(&folder.join("album.dsfproj")), folder);
     }
 
     #[test]
